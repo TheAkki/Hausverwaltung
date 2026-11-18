@@ -21,6 +21,9 @@ Erste öffentliche Version unter der GNU General Public License, Version 2 oder 
 - **Betriebskostenabrechnung:** als PDF mit frei gestaltbaren Vorlagen, mit Leerständen,
   Nachzahlungen und Erstattungen.
 - **Benutzer und Gruppen:** Benutzergruppen mit Rollen, Backup-Export und -Import.
+- **Administrator:** Konto für `ADMIN_EMAIL` per `php artisan hv:admin` mit zufälligem
+  Startpasswort, `--reset-password` als Notfallzugang. Die Adresse ist für
+  Registrierung, Profil und API gesperrt.
 - **REST-API:** mit OpenAPI-Dokumentation (`/api-docs`) und Python-Client für den
   Datenimport.
 - **Oberfläche:** Deutsch und Englisch, Themes.

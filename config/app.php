@@ -30,6 +30,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Links immer aus APP_URL bilden
+    |--------------------------------------------------------------------------
+    |
+    | true: Alle Links und Weiterleitungen nutzen Schema, Host und Port aus
+    | APP_URL statt aus der Anfrage (siehe App\Services\CanonicalUrl). Im
+    | Docker-Betrieb fest eingeschaltet, weil nginx den Port nicht weiterreicht.
+    |
+    */
+
+    'force_url' => (bool) env('APP_FORCE_URL', false),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Environment
     |--------------------------------------------------------------------------
     |

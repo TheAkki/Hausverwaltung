@@ -4,7 +4,9 @@ Diese Anleitung beschreibt die Bedienung der Hausverwaltungs-Software. Sie richt
 
 ## Erster Start
 
-Administrator ist das Konto mit der E-Mail-Adresse aus der Einstellung `ADMIN_EMAIL`. Im Docker-Betrieb legst du es an, indem du dich mit dieser Adresse über **Registrieren** anmeldest.
+Administrator ist das Konto mit der E-Mail-Adresse aus der Einstellung `ADMIN_EMAIL`. Es wird mit dem Befehl `php artisan hv:admin` angelegt, im Docker-Betrieb mit `docker compose exec -u www-data app php artisan hv:admin`. Der Befehl zeigt einmalig ein zufälliges Startpasswort. Nach dem ersten Login wirst du auf die Profilseite geleitet und vergibst dort ein eigenes Passwort. Hast du es vergessen, erzeugt `php artisan hv:admin --reset-password` ein neues Startpasswort und meldet alle bisherigen Sitzungen und API-Tokens des Kontos ab.
+
+Die Adresse des Administrators ist reserviert: Über **Registrieren**, das Profil oder die Benutzerverwaltung kann sie kein anderes Konto bekommen.
 
 In einer Entwicklungsumgebung (`php artisan db:seed`) steht stattdessen ein **Admin-Account** (`admin@example.com`) mit leerem Passwort zur Verfügung. Nach dem ersten Login wirst du automatisch auf die Profilseite geleitet und musst dort ein neues Passwort vergeben, bevor du die restliche Anwendung nutzen kannst.
 

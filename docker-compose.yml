@@ -37,6 +37,8 @@ services:
     environment:
       APP_ENV: production
       APP_DEBUG: "false"
+      # Links und Weiterleitungen aus APP_URL bilden (nginx reicht den Port nicht weiter).
+      APP_FORCE_URL: "true"
       LOG_CHANNEL: stderr
       LOG_LEVEL: ${LOG_LEVEL:-warning}
       SESSION_DRIVER: database

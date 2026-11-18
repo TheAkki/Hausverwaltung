@@ -57,8 +57,9 @@ curl -fsSL -o .env https://raw.githubusercontent.com/TheAkki/Hausverwaltung/main
 docker compose up -d
 ```
 
-Die Anwendung läuft dann unter http://localhost:8080. Registriere dich dort mit der
-Adresse aus `ADMIN_EMAIL`; dieses Konto ist der Administrator. Alle Einstellungen,
+Das Konto des Administrators legst du mit
+`docker compose exec -u www-data app php artisan hv:admin` an. Der Befehl zeigt einmalig
+ein Startpasswort, mit dem du dich unter http://localhost:8080 anmeldest. Alle Einstellungen,
 Datenbankvarianten und Hinweise zu Sicherung und Sicherheit stehen in
 [docker/README.md](docker/README.md).
 
@@ -90,6 +91,13 @@ Danach in der `.env` mindestens setzen:
 ```dotenv
 APP_URL=http://localhost:8000
 ADMIN_EMAIL=deine.adresse@example.org   # dieses Konto ist der Administrator
+```
+
+Administrator anlegen (zeigt einmalig ein Startpasswort, das beim ersten Login geändert
+werden muss; mit `--reset-password` ein neues für ein vorhandenes Konto):
+
+```bash
+php artisan hv:admin
 ```
 
 Datenbankserver statt SQLite: `DB_CONNECTION` (`mysql`, `mariadb` oder `pgsql`) sowie

@@ -16,9 +16,32 @@ curl -fsSL -o .env https://raw.githubusercontent.com/TheAkki/Hausverwaltung/main
 docker compose up -d
 ```
 
-Danach ist die Anwendung unter `APP_URL` erreichbar (Standard
-http://localhost:8080). Registriere dich dort mit der Adresse aus `ADMIN_EMAIL`; dieses
-Konto ist der Administrator.
+Danach das Konto des Administrators anlegen:
+
+```bash
+docker compose exec -u www-data app php artisan hv:admin
+```
+
+Der Befehl legt das Konto für die Adresse aus `ADMIN_EMAIL` an und zeigt **einmalig** ein
+zufälliges Startpasswort. Melde dich damit unter `APP_URL` an (Standard
+http://localhost:8080). Beim ersten Login musst du ein eigenes Passwort vergeben.
+
+## Administrator
+
+| Aufruf | Wirkung |
+|---|---|
+| `hv:admin` | legt das Konto an, falls es fehlt; sonst ändert sich nichts |
+| `hv:admin --reset-password` | neues Startpasswort für das vorhandene Konto; API-Tokens und Anmeldungen des Kontos werden beendet |
+
+Immer mit `docker compose exec -u www-data app php artisan …` aufrufen.
+
+- **Reservierte Adresse:** Die Adresse aus `ADMIN_EMAIL` kann sich niemand über
+  **Registrieren** holen. Auch per Profil, Benutzerverwaltung oder API kann sie kein
+  Konto bekommen. Der Administrator entsteht nur über diesen Befehl.
+- **Passwort vergessen:** Ohne eingerichteten Mailversand hilft
+  `hv:admin --reset-password`.
+- **Andere Adresse:** Wird `ADMIN_EMAIL` später geändert, legt `hv:admin` ein Konto für
+  die neue Adresse an. Das alte Konto bleibt als normaler Benutzer bestehen.
 
 ## Die Datei `.env`
 
@@ -35,6 +58,12 @@ auf zwei Wegen:
 Nicht überschreiben lassen sich die Werte, die im Docker-Betrieb fest sind: `APP_ENV`
 (production), `APP_DEBUG` (aus), Logs nach stderr sowie Sitzungen, Cache und Warteschlange
 in der Datenbank.
+
+**`APP_URL` muss stimmen:** Alle Links und Weiterleitungen entstehen aus `APP_URL`
+(`APP_FORCE_URL` ist fest eingeschaltet). Trage die Adresse genau so ein, wie sie im
+Browser steht, mit Port (`http://localhost:8080`) oder, hinter einem Reverse Proxy, mit
+`https://`. Hintergrund: nginx in Debian reicht aus Sicherheitsgründen nur den Hostnamen
+ohne Port an PHP weiter.
 
 Die Datei enthält Passwörter: nicht weitergeben und nicht einchecken. Werte ohne
 Anführungszeichen schreiben, Kommentare immer in eigene Zeilen. Fehlt die Datei, bricht

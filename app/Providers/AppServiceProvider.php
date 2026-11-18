@@ -7,6 +7,7 @@ use App\Models\ManagementGroup;
 use App\Models\ManagementUnit;
 use App\Models\RentalUnit;
 use App\Models\User;
+use App\Services\CanonicalUrl;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\ServiceProvider;
@@ -43,5 +44,8 @@ class AppServiceProvider extends ServiceProvider
             // Sanctum's personal_access_tokens.tokenable (REST-API-Login).
             'user' => User::class,
         ]);
+
+        // Links und Weiterleitungen aus APP_URL bilden (Docker, siehe CanonicalUrl).
+        $this->app->make(CanonicalUrl::class)->apply();
     }
 }

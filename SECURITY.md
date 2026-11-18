@@ -28,8 +28,10 @@ Branch `main`.
 
 - **HTTPS:** Betreibe die Anwendung nur über HTTPS. Hinter einem Reverse Proxy
   `SESSION_SECURE_COOKIE=true` setzen.
-- **Administrator:** `ADMIN_EMAIL` auf die eigene Adresse setzen und das
-  Administratorkonto sofort anlegen.
+- **Administrator:** `ADMIN_EMAIL` auf die eigene Adresse setzen und das Konto mit
+  `php artisan hv:admin` anlegen. Die Adresse ist für alle anderen Wege (Registrierung,
+  Profil, API) gesperrt. Bei Verdacht auf einen fremden Zugriff beendet
+  `php artisan hv:admin --reset-password` alle Anmeldungen und Tokens des Kontos.
 - **Kein Entwicklungs-Seeder:** `php artisan db:seed` ohne `--class` nicht auf einem
   erreichbaren Server ausführen. Er legt Testkonten mit bekannten Passwörtern an.
 - **Updates:** Abhängigkeiten aktuell halten und regelmäßig `composer audit` und
