@@ -1,0 +1,1989 @@
+openapi: 3.0.3
+info:
+  title: Hausverwaltung REST-API
+  version: 1.0.0
+  description: |
+    REST-API der Hausverwaltung (Konzept.md "## API").
+
+    **Authentifizierung:** `POST /api/login` liefert ein Token (Laravel Sanctum).
+    Alle weiteren Endpunkte erwarten den Header `Authorization: Bearer <token>`.
+    `POST /api/logout` widerruft das verwendete Token.
+
+    **Einnahmen und Ausgaben:** Eine Rechnung mit positivem Betrag ist eine Ausgabe,
+    eine mit negativem Betrag eine Einnahme (Rückzahlung/Gutschrift, z. B.
+    Stromrückzahlung). Beide laufen über `/invoices`; die zugehörigen Buchungen sind
+    die Kostenzeilen (`/costs`) mit demselben Vorzeichen.
+
+    **Backup/Restore und Import:** `GET /api/backup` liefert das eigene Backup,
+    `POST /api/backup` stellt eines wieder her. Für den Import eigener Daten (siehe
+    scripts/api-client) legen Rechnungen mit `allocations`/`segments` ihre Kostenzeilen
+    mit derselben Logik an wie der Seeder; `POST /invoices/{id}/bookings` und
+    `POST /leases/{id}/rent-payments/book` buchen Abbuchungen bzw. Mieteingänge nach
+    ihrem Datum. Für einen Import, der jede Kostenzeile selbst anlegt, schalten
+    `generate_costs` (Rechnungen) und `refresh_forecast` (Kostenzeilen) die automatisch
+    erzeugten Kostenzeilen ab.
+
+    **Anmeldung:** Am einfachsten mit einem persönlichen Token aus dem Profil
+    (API-Zugang) als `Authorization: Bearer <Token>`; alternativ `POST /api/login`.
+
+    **Sichtbarkeit:** Jeder Endpunkt liefert/ändert nur Daten der Benutzergruppen,
+    denen der angemeldete Benutzer angehört (dieselben Policies wie die Web-Oberfläche).
+servers:
+  - url: /api
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Authentifizierung
+  - name: Mieter
+  - name: Mietverträge
+  - name: Mieteinheiten
+  - name: Verwaltungsgruppen
+  - name: Verwaltungseinheiten
+  - name: Rechnungen
+  - name: Kosten
+  - name: Offene Buchungen
+  - name: Backup
+  - name: Benutzer
+  - name: Gruppen
+  - name: Rechnungssteller
+  - name: Abrechnungsintervalle
+  - name: Kategorien
+  - name: Konten
+  - name: Wartungsverträge
+  - name: Mietintervalle
+  - name: Forderungen
+  - name: Vorlagen
+  - name: Berichte
+
+paths:
+  /login:
+    post:
+      tags: [Authentifizierung]
+      summary: Einloggen und Token erzeugen
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, nullable: true }
+                device_name: { type: string, description: 'Name des Tokens (Default "api")' }
+      responses:
+        '201':
+          description: Token erzeugt
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string, example: '1|abcdef...' }
+                  user: { $ref: '#/components/schemas/User' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /logout:
+    post:
+      tags: [Authentifizierung]
+      summary: Ausloggen (aktuelles Token widerrufen)
+      responses:
+        '204': { description: Token widerrufen }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /user:
+    get:
+      tags: [Authentifizierung]
+      summary: Angemeldeten Benutzer anzeigen
+      responses:
+        '200':
+          description: Benutzer
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /tenants:
+    get:
+      tags: [Mieter]
+      summary: Mieter auflisten (paginiert, 20 je Seite)
+      parameters:
+        - { name: page, in: query, schema: { type: integer } }
+      responses:
+        '200':
+          description: Paginierte Mieterliste
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Paginated'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Tenant' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    post:
+      tags: [Mieter]
+      summary: Mieter erstellen
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TenantInput' }
+      responses:
+        '201': { $ref: '#/components/responses/Tenant' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /tenants/{tenant}:
+    parameters:
+      - { name: tenant, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Mieter]
+      summary: Mieter anzeigen (inkl. Mietverträge)
+      responses:
+        '200': { $ref: '#/components/responses/Tenant' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Mieter]
+      summary: Mieter bearbeiten
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TenantInput' }
+      responses:
+        '200': { $ref: '#/components/responses/Tenant' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Mieter]
+      summary: Mieter löschen
+      responses:
+        '204': { description: Gelöscht }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /leases:
+    get:
+      tags: [Mietverträge]
+      summary: Mietverträge auflisten
+      parameters:
+        - { name: show_expired, in: query, schema: { type: boolean }, description: Auch abgelaufene Mietverträge liefern }
+      responses:
+        '200':
+          description: Mietverträge
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Lease' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    post:
+      tags: [Mietverträge]
+      summary: Mietvertrag erstellen
+      description: |
+        `assignment_mode: tenants` (Default) erfordert `tenant_ids`;
+        `assignment_mode: reference` koppelt an einen bestehenden Mietvertrag
+        (`coupled_to_lease_id`, nur für nicht abrechnungsrelevante Mieteinheiten).
+        Überlappende Mietverträge derselben Mieteinheit werden abgelehnt.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/LeaseInput'
+                - type: object
+                  required: [rental_unit_id]
+                  properties:
+                    rental_unit_id: { type: integer }
+                    assignment_mode: { type: string, enum: [tenants, reference] }
+                    coupled_to_lease_id: { type: integer }
+      responses:
+        '201': { $ref: '#/components/responses/Lease' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /leases/{lease}:
+    parameters:
+      - { name: lease, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Mietverträge]
+      summary: Mietvertrag anzeigen (inkl. Mieter, Mieteinheit, Mietintervalle, Dokumente)
+      responses:
+        '200': { $ref: '#/components/responses/Lease' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Mietverträge]
+      summary: Mietvertrag bearbeiten
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LeaseInput' }
+      responses:
+        '200': { $ref: '#/components/responses/Lease' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Mietverträge]
+      summary: Mietvertrag löschen
+      responses:
+        '204': { description: Gelöscht }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /rental-units:
+    get:
+      tags: [Mieteinheiten]
+      summary: Mieteinheiten auflisten
+      responses:
+        '200':
+          description: Mieteinheiten
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/RentalUnit' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    post:
+      tags: [Mieteinheiten]
+      summary: Mieteinheit erstellen
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/RentalUnitInput'
+                - type: object
+                  required: [management_unit_id]
+                  properties:
+                    management_unit_id: { type: integer }
+      responses:
+        '201': { $ref: '#/components/responses/RentalUnit' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /rental-units/{rentalUnit}:
+    parameters:
+      - { name: rentalUnit, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Mieteinheiten]
+      summary: Mieteinheit anzeigen (inkl. Mietverträge und Mieter)
+      responses:
+        '200': { $ref: '#/components/responses/RentalUnit' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Mieteinheiten]
+      summary: Mieteinheit bearbeiten
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RentalUnitInput' }
+      responses:
+        '200': { $ref: '#/components/responses/RentalUnit' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Mieteinheiten]
+      summary: Mieteinheit löschen
+      responses:
+        '204': { description: Gelöscht }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /management-groups:
+    get:
+      tags: [Verwaltungsgruppen]
+      summary: Verwaltungsgruppen auflisten (inkl. Anzahl Verwaltungseinheiten)
+      responses:
+        '200':
+          description: Verwaltungsgruppen
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/ManagementGroup' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    post:
+      tags: [Verwaltungsgruppen]
+      summary: Verwaltungsgruppe erstellen
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ManagementGroupInput' }
+      responses:
+        '201': { $ref: '#/components/responses/ManagementGroup' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /management-groups/{managementGroup}:
+    parameters:
+      - { name: managementGroup, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Verwaltungsgruppen]
+      summary: Verwaltungsgruppe anzeigen (inkl. Verwaltungs-/Mieteinheiten, Kategorien, Konten)
+      responses:
+        '200': { $ref: '#/components/responses/ManagementGroup' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Verwaltungsgruppen]
+      summary: Verwaltungsgruppe bearbeiten
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/ManagementGroupInput'
+                - type: object
+                  properties:
+                    default_billing_template_id: { type: integer, nullable: true }
+      responses:
+        '200': { $ref: '#/components/responses/ManagementGroup' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Verwaltungsgruppen]
+      summary: Verwaltungsgruppe löschen
+      responses:
+        '204': { description: Gelöscht }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /management-units:
+    get:
+      tags: [Verwaltungseinheiten]
+      summary: Verwaltungseinheiten auflisten
+      responses:
+        '200':
+          description: Verwaltungseinheiten
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/ManagementUnit' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    post:
+      tags: [Verwaltungseinheiten]
+      summary: Verwaltungseinheit erstellen
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/ManagementUnitInput'
+                - type: object
+                  required: [management_group_id]
+                  properties:
+                    management_group_id: { type: integer }
+      responses:
+        '201': { $ref: '#/components/responses/ManagementUnit' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /management-units/{managementUnit}:
+    parameters:
+      - { name: managementUnit, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Verwaltungseinheiten]
+      summary: Verwaltungseinheit anzeigen (inkl. Mieteinheiten, Mietverträge, Mieter)
+      responses:
+        '200': { $ref: '#/components/responses/ManagementUnit' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Verwaltungseinheiten]
+      summary: Verwaltungseinheit bearbeiten
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ManagementUnitInput' }
+      responses:
+        '200': { $ref: '#/components/responses/ManagementUnit' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Verwaltungseinheiten]
+      summary: Verwaltungseinheit löschen
+      responses:
+        '204': { description: Gelöscht }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /invoices:
+    get:
+      tags: [Rechnungen]
+      summary: Rechnungen (Einnahmen/Ausgaben) auflisten und suchen (paginiert, 20 je Seite)
+      description: Alle angegebenen Suchkriterien werden UND-verknüpft.
+      parameters:
+        - { name: type, in: query, schema: { type: string, enum: [income, expense] }, description: 'income = negative Rechnungen (Einnahmen), expense = Ausgaben' }
+        - { name: search, in: query, schema: { type: string }, description: 'Teilstring in Rechnungssteller (Name, Vorname, Firma) oder Beschreibung' }
+        - { name: invoice_number, in: query, schema: { type: string }, description: Teilstring der Rechnungsnummer }
+        - { name: date_from, in: query, schema: { type: string, format: date }, description: Rechnungsdatum ab (einschließlich) }
+        - { name: date_to, in: query, schema: { type: string, format: date }, description: Rechnungsdatum bis (einschließlich) }
+        - { name: invoice_date, in: query, schema: { type: string, format: date }, description: 'Genau dieses Rechnungsdatum (zum Wiederfinden einer Rechnung)' }
+        - { name: invoice_issuer_id, in: query, schema: { type: integer }, description: Genau dieser Rechnungssteller }
+        - { name: costable, in: query, schema: { type: string, example: 'management_group:5' }, description: 'Genau diese Zuordnung "<typ>:<id>"' }
+        - { name: show_completed, in: query, schema: { type: boolean }, description: Auch vollständig gebuchte Rechnungen liefern }
+        - { name: page, in: query, schema: { type: integer } }
+      responses:
+        '200':
+          description: Paginierte Rechnungsliste
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Paginated'
+                  - type: object
+                    properties:
+                      data: { type: array, items: { $ref: '#/components/schemas/Invoice' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    post:
+      tags: [Rechnungen]
+      summary: Rechnung (Ausgabe) bzw. Rückzahlung (Einnahme, negativer Betrag) erstellen – erzeugt die zugehörigen Kostenzeilen
+      description: |
+        Zwei Varianten:
+        - **Eine Kategorie** (`cost_category_id`, `billing_interval_id`): wie das Webformular.
+        - **Aufteilung** (`allocations`) und/oder **Betragsintervalle** (`segments`): eine
+          Kostenzeile je Termin und Kategorie, mit derselben Logik wie der Seeder. Termine
+          bis `recurrence_end`, ohne Ende bis zum Ende des Folgejahres. Mit Ende bleibt die
+          ganze Rechnung im Abrechnungsintervall ihres Beginns, ohne Ende bekommt jeder Termin
+          das Intervall seines Datums (fehlende Jahresintervalle werden angelegt).
+          `billing_interval_id` heftet dann alle Termine an ein Intervall.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/InvoiceCreateInput'
+                - $ref: '#/components/schemas/InvoiceSeriesInput'
+          multipart/form-data:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/InvoiceCreateInput'
+                - type: object
+                  properties:
+                    file: { type: string, format: binary, description: 'Beleg (pdf, doc, docx, jpg, jpeg, png; max. 10 MB)' }
+      responses:
+        '201': { $ref: '#/components/responses/Invoice' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /invoices/{invoice}:
+    parameters:
+      - { name: invoice, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Rechnungen]
+      summary: Rechnung anzeigen (inkl. Termine und Kostenzeilen)
+      responses:
+        '200': { $ref: '#/components/responses/Invoice' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Rechnungen]
+      summary: Rechnung bearbeiten
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/InvoiceUpdateInput' }
+      responses:
+        '200': { $ref: '#/components/responses/Invoice' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Rechnungen]
+      summary: Rechnung löschen (inkl. Beleg-Datei)
+      responses:
+        '204': { description: Gelöscht }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /invoices/{invoice}/bookings:
+    parameters:
+      - { name: invoice, in: path, required: true, schema: { type: integer } }
+    post:
+      tags: [Rechnungen]
+      summary: Tatsächlich erfolgte Abbuchungen buchen (z. B. vom Kontoauszug)
+      description: |
+        Jede Abbuchung wird dem kalendarisch nächstgelegenen Termin der Rechnung zugeordnet;
+        dessen offene Prognosezeile wird zur Buchung (echter Betrag, echtes Datum). Fehlt sie,
+        wird eine angelegt. Dieselbe Abbuchung erneut zu senden ändert nichts. Danach werden
+        die offenen Termine nach der letzten Buchung angepasst (`refresh_forecast`, Standard
+        true) – nur bei schwankenden Beträgen (Betragsüberprüfung aus oder mindestens zwei
+        verschiedene gebuchte Beträge einer Kategorie), nach dem Prognosemodus der
+        Verwaltungsgruppe (letzter Betrag, Regression oder keine Prognose).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [bookings]
+              properties:
+                bookings:
+                  type: array
+                  items:
+                    type: object
+                    required: [booking_date]
+                    properties:
+                      booking_date: { type: string, format: date }
+                      amount: { type: number, description: 'Betrag, wenn die Rechnung genau eine Kategorie hat' }
+                      allocations:
+                        type: array
+                        description: Beträge je Kategorie
+                        items:
+                          type: object
+                          required: [cost_category_id, amount]
+                          properties:
+                            cost_category_id: { type: integer }
+                            amount: { type: number }
+                            billing_interval_id: { type: integer, nullable: true, description: 'Nur diesen Anteil an ein Abrechnungsintervall heften' }
+                billing_interval_id: { type: integer, nullable: true, description: 'Alle Anteile an dieses Abrechnungsintervall heften' }
+                refresh_forecast: { type: boolean, default: true, description: 'false = offene Termine unverändert lassen (z. B. bei Betragsintervallen)' }
+      responses:
+        '200':
+          description: Die gebuchten Kostenzeilen
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  costs: { type: array, items: { $ref: '#/components/schemas/Cost' } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /invoices/{invoice}/series:
+    parameters:
+      - { name: invoice, in: path, required: true, schema: { type: integer } }
+    post:
+      tags: [Rechnungen]
+      summary: Weitere Termine einer wiederkehrenden Rechnung schreiben (z. B. Vertragsverlängerung)
+      description: |
+        Dieselben Regeln wie beim Anlegen mit allocations/segments. Termine, für die es schon
+        eine Kostenzeile gibt, bleiben unverändert; recurrence_start/recurrence_end werden auf
+        die neuen Werte gesetzt (ohne recurrence_end: unbefristet). Wiederholbar.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                recurrence_start: { type: string, format: date, nullable: true }
+                recurrence_end: { type: string, format: date, nullable: true }
+                billing_interval_id: { type: integer, nullable: true }
+                allocations: { type: array, items: { $ref: '#/components/schemas/AllocationInput' } }
+                segments: { type: array, items: { type: object } }
+      responses:
+        '200': { $ref: '#/components/responses/Invoice' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /invoices/{invoice}/file:
+    parameters:
+      - { name: invoice, in: path, required: true, schema: { type: integer } }
+    post:
+      tags: [Rechnungen]
+      summary: Beleg (Datei) anhängen bzw. ersetzen
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary, description: 'pdf, doc, docx, jpg, jpeg, png; max. 10 MB' }
+      responses:
+        '200': { $ref: '#/components/responses/Invoice' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    get:
+      tags: [Rechnungen]
+      summary: Beleg herunterladen
+      responses:
+        '200':
+          description: Beleg-Datei (Original-Dateiname im Content-Disposition-Header)
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Rechnung hat keinen Beleg }
+    delete:
+      tags: [Rechnungen]
+      summary: Beleg löschen
+      responses:
+        '204': { description: Beleg gelöscht }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /open-bookings:
+    get:
+      tags: [Offene Buchungen]
+      summary: Offene Buchungen anzeigen
+      description: Noch nicht gebuchte Kostenzeilen und Mietzahlungen, deren Periode bereits begonnen hat (wie die Web-Übersicht "Offene Zahlungen").
+      responses:
+        '200':
+          description: Offene Buchungen
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  costs: { type: array, items: { $ref: '#/components/schemas/Cost' } }
+                  rent_payments: { type: array, items: { $ref: '#/components/schemas/RentPayment' } }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+
+  /costs:
+    post:
+      tags: [Kosten]
+      summary: Kostenzeile zu einer Rechnung erstellen
+      description: Die Summe der Kostenzeilen je Periode muss zwischen 0 und dem Rechnungsbetrag liegen – bei einer Rückzahlung (negativer Betrag) also ebenfalls negativ sein (außer bei `disable_amount_cap`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/CostInput'
+                - type: object
+                  required: [invoice_id, costable_type, costable_id]
+                  properties:
+                    invoice_id: { type: integer }
+                    costable_type: { type: string, enum: [management_group, management_unit, rental_unit, lease] }
+                    costable_id: { type: integer }
+      responses:
+        '201': { $ref: '#/components/responses/Cost' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /costs/{cost}:
+    parameters:
+      - { name: cost, in: path, required: true, schema: { type: integer } }
+    put:
+      tags: [Kosten]
+      summary: Kostenzeile bearbeiten
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/CostInput'
+                - type: object
+                  properties:
+                    confirm_booking: { type: boolean, description: 'Buchungsabsicht; bei aktivem Kontensystem ist dann account_id Pflicht' }
+      responses:
+        '200': { $ref: '#/components/responses/Cost' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    delete:
+      tags: [Kosten]
+      summary: Kostenzeile löschen
+      responses:
+        '204': { description: Gelöscht }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /backup:
+    get:
+      tags: [Backup]
+      summary: Eigenes Backup als ZIP herunterladen
+      description: Enthält backup.json (Format "hausverwaltung-backup", Version 2) und alle angehängten Dateien unter files/.
+      responses:
+        '200': { $ref: '#/components/responses/Zip' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+    post:
+      tags: [Backup]
+      summary: Backup-ZIP importieren (Restore)
+      description: Ein Gesamt-Backup darf nur der Administrator importieren.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [backup]
+              properties:
+                backup: { type: string, format: binary }
+      responses:
+        '200': { $ref: '#/components/responses/Message' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /backup/full:
+    get:
+      tags: [Backup]
+      summary: Gesamt-Backup aller Benutzer und Gruppen (nur Administrator)
+      responses:
+        '200': { $ref: '#/components/responses/Zip' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /users:
+    get:
+      tags: [Benutzer]
+      summary: Benutzer auflisten (nur Administrator; paginiert, 20 je Seite)
+      parameters:
+        - { name: email, in: query, schema: { type: string, format: email }, description: Nur den Benutzer mit dieser E-Mail-Adresse }
+        - { name: page, in: query, schema: { type: integer } }
+      responses:
+        '200': { $ref: '#/components/responses/Paginated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Benutzer]
+      summary: Benutzer anlegen (nur Administrator)
+      description: Legt automatisch die persönliche Gruppe "Gruppe von <Name>" an.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password, password_confirmation]
+              properties:
+                name: { type: string }
+                email: { type: string, format: email }
+                password: { type: string }
+                password_confirmation: { type: string }
+      responses:
+        '201': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /users/{user}:
+    parameters:
+      - { name: user, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Benutzer]
+      summary: Benutzer mit Gruppen anzeigen (eigenes Konto; fremde nur Administrator)
+      responses:
+        '200': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [Benutzer]
+      summary: Name und E-Mail ändern (eigenes Konto; fremde nur Administrator)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email]
+              properties:
+                name: { type: string }
+                email: { type: string, format: email }
+      responses:
+        '200': { $ref: '#/components/responses/Object' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /groups:
+    get:
+      tags: [Gruppen]
+      summary: Eigene Benutzergruppen
+      responses:
+        '200': { $ref: '#/components/responses/List' }
+    post:
+      tags: [Gruppen]
+      summary: Gruppe anlegen (Ersteller wird Eigentümer und Admin)
+      description: 'Der Administrator kann mit owner_id eine Gruppe für einen anderen Benutzer anlegen; dieser wird Eigentümer und Admin. Der Administrator darf außerdem die Mitglieder jeder Gruppe verwalten.'
+      requestBody: { $ref: '#/components/requestBodies/Group' }
+      responses:
+        '201': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /groups/{group}:
+    parameters:
+      - $ref: '#/components/parameters/Group'
+    get:
+      tags: [Gruppen]
+      summary: Gruppe mit Mitgliedern
+      responses:
+        '200': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [Gruppen]
+      summary: Gruppe bearbeiten (Admins)
+      requestBody: { $ref: '#/components/requestBodies/Group' }
+      responses:
+        '200': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [Gruppen]
+      summary: Gruppe löschen (nur Eigentümer)
+      responses:
+        '204': { description: Gelöscht }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /groups/{group}/members:
+    parameters:
+      - $ref: '#/components/parameters/Group'
+    post:
+      tags: [Gruppen]
+      summary: Mitglied per E-Mail hinzufügen (Rolle "user")
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '201': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /groups/{group}/members/{user}:
+    parameters:
+      - $ref: '#/components/parameters/Group'
+      - { name: user, in: path, required: true, schema: { type: integer } }
+    patch:
+      tags: [Gruppen]
+      summary: Rolle eines Mitglieds ändern
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { type: string, enum: [admin, user] }
+      responses:
+        '200': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [Gruppen]
+      summary: Mitglied entfernen
+      responses:
+        '204': { description: Entfernt }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /groups/{group}/landlord:
+    parameters:
+      - $ref: '#/components/parameters/Group'
+    put:
+      tags: [Gruppen]
+      summary: Vermieter der Benutzergruppe setzen (auch ohne Verwaltungsgruppe)
+      requestBody: { $ref: '#/components/requestBodies/Landlord' }
+      responses:
+        '200': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /invoice-issuers:
+    get:
+      tags: [Rechnungssteller]
+      summary: Rechnungssteller mit Kundenaccounts (paginiert)
+      parameters:
+        - { name: page, in: query, schema: { type: integer } }
+      responses:
+        '200': { $ref: '#/components/responses/Paginated' }
+    post:
+      tags: [Rechnungssteller]
+      summary: Rechnungssteller anlegen (Adresse optional)
+      requestBody: { $ref: '#/components/requestBodies/InvoiceIssuer' }
+      responses:
+        '201': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /invoice-issuers/{invoiceIssuer}:
+    parameters:
+      - { name: invoiceIssuer, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Rechnungssteller]
+      summary: Rechnungssteller anzeigen
+      responses:
+        '200': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [Rechnungssteller]
+      summary: Rechnungssteller bearbeiten
+      requestBody: { $ref: '#/components/requestBodies/InvoiceIssuer' }
+      responses:
+        '200': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [Rechnungssteller]
+      summary: Rechnungssteller löschen
+      responses:
+        '204': { description: Gelöscht }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /invoice-issuer-accounts:
+    post:
+      tags: [Rechnungssteller]
+      summary: Kundenaccount anlegen
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/IssuerAccountInput'
+                - type: object
+                  required: [invoice_issuer_id]
+                  properties:
+                    invoice_issuer_id: { type: integer }
+      responses:
+        '201': { $ref: '#/components/responses/Object' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /invoice-issuer-accounts/{invoiceIssuerAccount}:
+    parameters:
+      - { name: invoiceIssuerAccount, in: path, required: true, schema: { type: integer } }
+    put:
+      tags: [Rechnungssteller]
+      summary: Kundenaccount bearbeiten
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IssuerAccountInput' }
+      responses:
+        '200': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [Rechnungssteller]
+      summary: Kundenaccount löschen
+      responses:
+        '204': { description: Gelöscht }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /management-groups/{managementGroup}/billing-intervals:
+    get:
+      tags: [Abrechnungsintervalle]
+      summary: Abrechnungsintervalle einer Verwaltungsgruppe (aufsteigend)
+      parameters:
+        - $ref: '#/components/parameters/ManagementGroup'
+      responses:
+        '200': { $ref: '#/components/responses/List' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /billing-intervals:
+    post:
+      tags: [Abrechnungsintervalle]
+      summary: Abrechnungsintervall anlegen
+      description: Höchstens ein Jahr, lückenlos vor dem ersten oder nach dem letzten Intervall; Ende ohne Angabe = 31.12. des Startjahres.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [management_group_id, start_date]
+              properties:
+                management_group_id: { type: integer }
+                start_date: { type: string, format: date }
+                end_date: { type: string, format: date, nullable: true }
+                description: { type: string, nullable: true }
+      responses:
+        '201': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /billing-intervals/{billingInterval}:
+    delete:
+      tags: [Abrechnungsintervalle]
+      summary: Erstes oder letztes, unbenutztes Abrechnungsintervall löschen
+      parameters:
+        - $ref: '#/components/parameters/BillingInterval'
+      responses:
+        '204': { description: Gelöscht }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /management-groups/{managementGroup}/landlord:
+    parameters:
+      - $ref: '#/components/parameters/ManagementGroup'
+    get:
+      tags: [Verwaltungsgruppen]
+      summary: Vermieter (Account) und Override der Verwaltungsgruppe
+      responses:
+        '200': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [Verwaltungsgruppen]
+      summary: Vermieter setzen
+      description: '"scope: account" setzt den Vermieter der Benutzergruppe, sonst den Override der Verwaltungsgruppe; "remove_override: true" entfernt den Override (204).'
+      requestBody: { $ref: '#/components/requestBodies/Landlord' }
+      responses:
+        '200': { $ref: '#/components/responses/Object' }
+        '204': { description: Override entfernt }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /management-groups/{managementGroup}/cost-categories/{costCategory}:
+    put:
+      tags: [Kategorien]
+      summary: Abrechnungsschlüssel einer Kategorie in der Verwaltungsgruppe setzen
+      parameters:
+        - $ref: '#/components/parameters/ManagementGroup'
+        - $ref: '#/components/parameters/CostCategory'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [allocation_key]
+              properties:
+                allocation_key: { type: string, enum: [person_count, area, individual, rental_unit] }
+      responses:
+        '200': { $ref: '#/components/responses/List' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /cost-categories:
+    get:
+      tags: [Kategorien]
+      summary: Sichtbare Kategorien (systemweit und eigene Gruppen)
+      responses:
+        '200': { $ref: '#/components/responses/List' }
+    post:
+      tags: [Kategorien]
+      summary: Kategorie (optional als Unterkategorie) anlegen
+      description: Der Name muss unter den sichtbaren Kategorien eindeutig sein und darf "::" nicht enthalten.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_group_id, name]
+              properties:
+                user_group_id: { type: integer }
+                parent_id: { type: integer, nullable: true }
+                name: { type: string }
+                is_relevant_for_billing: { type: boolean }
+                is_tax_relevant: { type: boolean }
+      responses:
+        '201': { $ref: '#/components/responses/Object' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /cost-categories/{costCategory}:
+    parameters:
+      - $ref: '#/components/parameters/CostCategory'
+    get:
+      tags: [Kategorien]
+      summary: Kategorie anzeigen
+      responses:
+        '200': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [Kategorien]
+      summary: Abrechnungs-/Steuerrelevanz ändern (nur gruppeneigene Kategorien)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                is_relevant_for_billing: { type: boolean }
+                is_tax_relevant: { type: boolean }
+      responses:
+        '200': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    patch:
+      tags: [Kategorien]
+      summary: Wie PUT
+      responses:
+        '200': { $ref: '#/components/responses/Object' }
+
+  /accounts:
+    post:
+      tags: [Konten]
+      summary: Konto anlegen (nur bei aktivem Kontensystem)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/AccountInput'
+                - type: object
+                  required: [management_group_id]
+                  properties:
+                    management_group_id: { type: integer }
+      responses:
+        '201': { $ref: '#/components/responses/Object' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /accounts/{account}:
+    parameters:
+      - { name: account, in: path, required: true, schema: { type: integer } }
+    put:
+      tags: [Konten]
+      summary: Konto bearbeiten
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AccountInput' }
+      responses:
+        '200': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [Konten]
+      summary: Konto löschen
+      responses:
+        '204': { description: Gelöscht }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /account-transfers:
+    post:
+      tags: [Konten]
+      summary: Umbuchung zwischen zwei Konten derselben Verwaltungsgruppe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [management_group_id, from_account_id, to_account_id, amount, transfer_date]
+              properties:
+                management_group_id: { type: integer }
+                from_account_id: { type: integer }
+                to_account_id: { type: integer }
+                amount: { type: number, minimum: 0.01 }
+                transfer_date: { type: string, format: date }
+                comment: { type: string, nullable: true }
+      responses:
+        '201': { $ref: '#/components/responses/Object' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /maintenance-contracts:
+    post:
+      tags: [Wartungsverträge]
+      summary: Wartungsvertrag anlegen
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/MaintenanceContractInput'
+                - type: object
+                  required: [management_group_id]
+                  properties:
+                    management_group_id: { type: integer }
+      responses:
+        '201': { $ref: '#/components/responses/Object' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /maintenance-contracts/{maintenanceContract}:
+    parameters:
+      - { name: maintenanceContract, in: path, required: true, schema: { type: integer } }
+    put:
+      tags: [Wartungsverträge]
+      summary: Wartungsvertrag bearbeiten
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MaintenanceContractInput' }
+      responses:
+        '200': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [Wartungsverträge]
+      summary: Wartungsvertrag löschen
+      responses:
+        '204': { description: Gelöscht }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /lease-intervals:
+    post:
+      tags: [Mietintervalle]
+      summary: Neues Mietintervall (beendet das bisherige am Vortag)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/LeaseIntervalInput'
+                - type: object
+                  required: [lease_id]
+                  properties:
+                    lease_id: { type: integer }
+      responses:
+        '201': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /lease-intervals/{leaseInterval}:
+    parameters:
+      - $ref: '#/components/parameters/LeaseInterval'
+    put:
+      tags: [Mietintervalle]
+      summary: Mietintervall bearbeiten
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/LeaseIntervalInput'
+                - type: object
+                  properties:
+                    end_date: { type: string, format: date, nullable: true }
+      responses:
+        '200': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [Mietintervalle]
+      summary: Letztes Mietintervall löschen
+      responses:
+        '204': { description: Gelöscht }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /lease-intervals/{leaseInterval}/rent-payments:
+    get:
+      tags: [Mietintervalle]
+      summary: Mietzahlungen des Intervalls (fehlende Monate werden erzeugt)
+      parameters:
+        - $ref: '#/components/parameters/LeaseInterval'
+      responses:
+        '200':
+          description: Mietzahlungen
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/RentPayment' } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /rent-payments/{rentPayment}:
+    put:
+      tags: [Mietintervalle]
+      summary: Mietzahlung buchen (oder Buchung entfernen)
+      parameters:
+        - { name: rentPayment, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                booking_date: { type: string, format: date, nullable: true }
+                account_id: { type: integer, nullable: true }
+                confirm_booking: { type: boolean, description: 'Buchungsabsicht; bei aktivem Kontensystem ist dann account_id Pflicht' }
+      responses:
+        '200': { $ref: '#/components/responses/Object' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /leases/{lease}/rent-payments/book:
+    post:
+      tags: [Mietintervalle]
+      summary: Eingegangene Mietzahlungen nach Zahlungsdatum buchen
+      description: |
+        Der Server bestimmt den bezahlten Monat: Eine Zahlung nach dem erwarteten Zahltag
+        (Tag des Mietbeginns) und höchstens 15 Tage vor dem des Folgemonats gilt für den
+        Folgemonat, sonst für den eigenen Monat. Gebucht wird die erste offene Mietzahlung
+        dieses Monats; passt keine, ist rent_payment null. Ein gekoppelter Mietvertrag bucht
+        keine eigenen Zahlungen (422).
+      parameters:
+        - { name: lease, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [booking_dates]
+              properties:
+                booking_dates: { type: array, items: { type: string, format: date } }
+      responses:
+        '200':
+          description: Ergebnis je Zahlungsdatum
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    booking_date: { type: string, format: date }
+                    rent_payment: { allOf: [{ $ref: '#/components/schemas/RentPayment' }], nullable: true }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /leases/{lease}/documents:
+    post:
+      tags: [Mietverträge]
+      summary: Dokument an Mietvertrag anhängen
+      parameters:
+        - { name: lease, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary, description: 'pdf, doc, docx, jpg, jpeg, png; max. 10 MB' }
+      responses:
+        '201': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /lease-documents/{leaseDocument}:
+    delete:
+      tags: [Mietverträge]
+      summary: Mietvertragsdokument löschen
+      parameters:
+        - { name: leaseDocument, in: path, required: true, schema: { type: integer } }
+      responses:
+        '204': { description: Gelöscht }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /settlement-claims:
+    post:
+      tags: [Forderungen]
+      summary: Forderung anlegen (genau eines von lease_id oder rental_unit_id)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/SettlementClaimInput'
+                - type: object
+                  properties:
+                    lease_id: { type: integer, nullable: true }
+                    rental_unit_id: { type: integer, nullable: true, description: Leerstand }
+      responses:
+        '201': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /settlement-claims/{settlementClaim}:
+    parameters:
+      - { name: settlementClaim, in: path, required: true, schema: { type: integer } }
+    put:
+      tags: [Forderungen]
+      summary: Forderung bearbeiten
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SettlementClaimInput' }
+      responses:
+        '200': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [Forderungen]
+      summary: Forderung löschen
+      responses:
+        '204': { description: Gelöscht }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /billing-templates:
+    get:
+      tags: [Vorlagen]
+      summary: Systemweite und eigene Abrechnungsvorlagen
+      responses:
+        '200': { $ref: '#/components/responses/List' }
+    post:
+      tags: [Vorlagen]
+      summary: Vorlage anlegen (JSON oder multipart mit Kopfbild)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/BillingTemplateInput' }
+          multipart/form-data:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/BillingTemplateInput'
+                - type: object
+                  properties:
+                    header_image: { type: string, format: binary }
+      responses:
+        '201': { $ref: '#/components/responses/Object' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+  /billing-templates/{billingTemplate}:
+    parameters:
+      - $ref: '#/components/parameters/BillingTemplate'
+    get:
+      tags: [Vorlagen]
+      summary: Vorlage anzeigen
+      responses:
+        '200': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    put:
+      tags: [Vorlagen]
+      summary: Vorlage bearbeiten (nur gruppeneigene)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/BillingTemplateInput'
+                - type: object
+                  properties:
+                    remove_header_image: { type: boolean }
+      responses:
+        '200': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    patch:
+      tags: [Vorlagen]
+      summary: Wie PUT
+      responses:
+        '200': { $ref: '#/components/responses/Object' }
+    delete:
+      tags: [Vorlagen]
+      summary: Vorlage löschen
+      responses:
+        '204': { description: Gelöscht }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /billing-templates/{billingTemplate}/header-image:
+    post:
+      tags: [Vorlagen]
+      summary: Kopfbild hochladen bzw. ersetzen
+      parameters:
+        - $ref: '#/components/parameters/BillingTemplate'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [header_image]
+              properties:
+                header_image: { type: string, format: binary, description: 'Bild, max. 2 MB' }
+      responses:
+        '200': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /management-groups/{managementGroup}/report:
+    get:
+      tags: [Berichte]
+      summary: Finanzübersicht (Einnahmen je Mieteinheitstyp, Ausgaben je Kategorie)
+      parameters:
+        - { name: managementGroup, in: path, required: true, schema: { type: integer } }
+        - { name: year, in: query, schema: { type: integer }, description: Jahr (Default laufendes Jahr) }
+      responses:
+        '200':
+          description: Finanzübersicht
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  year: { type: integer }
+                  income: { type: object, additionalProperties: true }
+                  expenses: { type: object, additionalProperties: true }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /management-units/{managementUnit}/billing-intervals/{billingInterval}/statement.pdf:
+    get:
+      tags: [Berichte]
+      summary: Betriebskostenabrechnung (alle Mieter inkl. Leerstand) als PDF
+      parameters:
+        - $ref: '#/components/parameters/ManagementUnit'
+        - $ref: '#/components/parameters/BillingInterval'
+      responses:
+        '200': { $ref: '#/components/responses/Pdf' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /management-units/{managementUnit}/billing-intervals/{billingInterval}/statement.zip:
+    get:
+      tags: [Berichte]
+      summary: Alle Einzelabrechnungen als ZIP (ein PDF je Mietvertrag)
+      parameters:
+        - $ref: '#/components/parameters/ManagementUnit'
+        - $ref: '#/components/parameters/BillingInterval'
+      responses:
+        '200':
+          description: ZIP-Archiv
+          content:
+            application/zip:
+              schema: { type: string, format: binary }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /management-units/{managementUnit}/billing-intervals/{billingInterval}/leases/{lease}/statement.pdf:
+    get:
+      tags: [Berichte]
+      summary: Betriebskostenabrechnung eines einzelnen Mietvertrags als PDF
+      parameters:
+        - $ref: '#/components/parameters/ManagementUnit'
+        - $ref: '#/components/parameters/BillingInterval'
+        - { name: lease, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200': { $ref: '#/components/responses/Pdf' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Mietvertrag ist im Abrechnungsintervall nicht abrechnungsrelevant oder existiert nicht }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Token aus `POST /api/login`
+
+  parameters:
+    ManagementUnit: { name: managementUnit, in: path, required: true, schema: { type: integer } }
+    BillingInterval: { name: billingInterval, in: path, required: true, schema: { type: integer } }
+
+    Group: { name: group, in: path, required: true, schema: { type: integer } }
+    ManagementGroup: { name: managementGroup, in: path, required: true, schema: { type: integer } }
+    CostCategory: { name: costCategory, in: path, required: true, schema: { type: integer } }
+    LeaseInterval: { name: leaseInterval, in: path, required: true, schema: { type: integer } }
+    BillingTemplate: { name: billingTemplate, in: path, required: true, schema: { type: integer } }
+
+
+  requestBodies:
+    Group:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [name]
+            properties:
+              name: { type: string }
+              description: { type: string, nullable: true }
+              owner_id: { type: integer, nullable: true, description: 'Nur Administrator, nur beim Anlegen: Eigentümer der neuen Gruppe' }
+    Landlord:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [name]
+            properties:
+              scope: { type: string, enum: [account, override] }
+              remove_override: { type: boolean }
+              salutation: { type: string, enum: [Herr, Frau], nullable: true }
+              first_name: { type: string, nullable: true }
+              name: { type: string }
+              company_name: { type: string, nullable: true }
+              street: { type: string, nullable: true }
+              postal_code: { type: string, nullable: true }
+              city: { type: string, nullable: true }
+              email: { type: string, nullable: true }
+              phone: { type: string, nullable: true }
+              mobile_phone: { type: string, nullable: true }
+              iban: { type: string, nullable: true }
+              bic: { type: string, nullable: true }
+              notes: { type: string, nullable: true }
+    InvoiceIssuer:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [user_group_id, name]
+            properties:
+              user_group_id: { type: integer }
+              name: { type: string }
+              first_name: { type: string, nullable: true }
+              salutation: { type: string, enum: [Herr, Frau], nullable: true }
+              company_name: { type: string, nullable: true }
+              street: { type: string, nullable: true }
+              postal_code: { type: string, nullable: true }
+              city: { type: string, nullable: true }
+              email: { type: string, nullable: true }
+              phone: { type: string, nullable: true }
+              mobile_phone: { type: string, nullable: true }
+              iban: { type: string, nullable: true }
+              bic: { type: string, nullable: true }
+              comment: { type: string, nullable: true }
+  responses:
+    Unauthenticated:
+      description: Kein oder ungültiges Token
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Kein Zugriff (andere Benutzergruppe)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Nicht gefunden
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ValidationError:
+      description: Validierungsfehler
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: { type: string }
+              errors:
+                type: object
+                additionalProperties: { type: array, items: { type: string } }
+    Pdf:
+      description: PDF-Datei
+      content:
+        application/pdf:
+          schema: { type: string, format: binary }
+    Object:
+      description: Angelegtes bzw. geändertes Objekt
+      content:
+        application/json:
+          schema: { type: object, additionalProperties: true }
+    List:
+      description: Liste
+      content:
+        application/json:
+          schema: { type: array, items: { type: object, additionalProperties: true } }
+    Paginated:
+      description: Paginierte Liste
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Paginated' }
+    Message:
+      description: Ergebnis
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: { type: string }
+    Zip:
+      description: ZIP-Archiv
+      content:
+        application/zip:
+          schema: { type: string, format: binary }
+    Tenant:
+      description: Mieter
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Tenant' }
+    Lease:
+      description: Mietvertrag
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Lease' }
+    RentalUnit:
+      description: Mieteinheit
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/RentalUnit' }
+    ManagementGroup:
+      description: Verwaltungsgruppe
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ManagementGroup' }
+    ManagementUnit:
+      description: Verwaltungseinheit
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ManagementUnit' }
+    Invoice:
+      description: Rechnung
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Invoice' }
+    Cost:
+      description: Kostenzeile
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Cost' }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        message: { type: string }
+    Paginated:
+      type: object
+      properties:
+        current_page: { type: integer }
+        last_page: { type: integer }
+        per_page: { type: integer }
+        total: { type: integer }
+        next_page_url: { type: string, nullable: true }
+        prev_page_url: { type: string, nullable: true }
+    Timestamps:
+      type: object
+      properties:
+        id: { type: integer, readOnly: true }
+        created_at: { type: string, format: date-time, readOnly: true }
+        updated_at: { type: string, format: date-time, readOnly: true }
+    User:
+      allOf:
+        - $ref: '#/components/schemas/Timestamps'
+        - type: object
+          properties:
+            name: { type: string }
+            email: { type: string, format: email }
+            theme_id: { type: integer, nullable: true }
+
+    TenantInput:
+      type: object
+      required: [user_group_id, last_name, street, postal_code, city]
+      properties:
+        user_group_id: { type: integer, description: 'Benutzergruppe, der der Mieter gehört' }
+        salutation: { type: string, enum: [Herr, Frau], nullable: true }
+        last_name: { type: string, maxLength: 255 }
+        first_name: { type: string, maxLength: 255, nullable: true }
+        company_name: { type: string, maxLength: 255, nullable: true }
+        street: { type: string, maxLength: 255 }
+        postal_code: { type: string, maxLength: 20 }
+        city: { type: string, maxLength: 255 }
+        email: { type: string, format: email, nullable: true }
+        mobile_phone: { type: string, maxLength: 30, nullable: true }
+        iban: { type: string, maxLength: 34, nullable: true, description: Prüfsumme wird validiert }
+        bic: { type: string, maxLength: 11, nullable: true }
+        notes: { type: string, nullable: true }
+    Tenant:
+      allOf:
+        - $ref: '#/components/schemas/Timestamps'
+        - $ref: '#/components/schemas/TenantInput'
+
+    LeaseInput:
+      type: object
+      required: [start_date, rent_adjustment_type, cold_rent]
+      properties:
+        tenant_ids: { type: array, items: { type: integer }, minItems: 1 }
+        start_date: { type: string, format: date }
+        end_date: { type: string, format: date, nullable: true }
+        is_pre_contract: { type: boolean, description: Vorvertrag }
+        rent_adjustment_type: { type: string, enum: [fixed, stepped, indexed] }
+        cold_rent: { type: number, minimum: 0 }
+        deposit_amount: { type: number, minimum: 0, nullable: true }
+        min_term_months: { type: integer, minimum: 0, nullable: true }
+        notice_period: { type: string, maxLength: 255, nullable: true }
+        notes: { type: string, nullable: true }
+    Lease:
+      allOf:
+        - $ref: '#/components/schemas/Timestamps'
+        - type: object
+          properties:
+            rental_unit_id: { type: integer }
+            coupled_to_lease_id: { type: integer, nullable: true }
+            start_date: { type: string, format: date-time }
+            end_date: { type: string, format: date-time, nullable: true }
+            is_pre_contract: { type: boolean }
+            rent_adjustment_type: { type: string, enum: [fixed, stepped, indexed] }
+            cold_rent: { type: number }
+            deposit_amount: { type: number, nullable: true }
+            min_term_months: { type: integer, nullable: true }
+            notice_period: { type: string, nullable: true }
+            notes: { type: string, nullable: true }
+            tenants: { type: array, items: { $ref: '#/components/schemas/Tenant' } }
+
+    RentalUnitInput:
+      type: object
+      required: [type]
+      properties:
+        type: { type: string, maxLength: 255, example: Wohnung }
+        size: { type: number, minimum: 0, nullable: true, description: Fläche in m² }
+        description: { type: string, maxLength: 255, nullable: true }
+        floor: { type: integer, nullable: true }
+        is_relevant_for_billing: { type: boolean }
+    RentalUnit:
+      allOf:
+        - $ref: '#/components/schemas/Timestamps'
+        - $ref: '#/components/schemas/RentalUnitInput'
+        - type: object
+          properties:
+            management_unit_id: { type: integer }
+
+    ManagementGroupInput:
+      type: object
+      required: [user_group_id]
+      properties:
+        user_group_id: { type: integer }
+        description: { type: string, nullable: true }
+        billing_start: { type: string, format: date, nullable: true }
+        kontosystem_enabled: { type: boolean }
+        variable_cost_forecast_mode: { type: string, nullable: true, description: 'Default "last_booking"' }
+    ManagementGroup:
+      allOf:
+        - $ref: '#/components/schemas/Timestamps'
+        - $ref: '#/components/schemas/ManagementGroupInput'
+        - type: object
+          properties:
+            default_billing_template_id: { type: integer, nullable: true }
+            management_units_count: { type: integer, description: Nur in der Liste }
+
+    ManagementUnitInput:
+      type: object
+      required: [street, postal_code, city]
+      properties:
+        street: { type: string, maxLength: 255 }
+        postal_code: { type: string, maxLength: 20 }
+        city: { type: string, maxLength: 255 }
+        description: { type: string, nullable: true }
+    ManagementUnit:
+      allOf:
+        - $ref: '#/components/schemas/Timestamps'
+        - $ref: '#/components/schemas/ManagementUnitInput'
+        - type: object
+          properties:
+            management_group_id: { type: integer }
+
+    InvoiceUpdateInput:
+      type: object
+      required: [invoice_issuer_id, amount, invoice_date]
+      properties:
+        invoice_issuer_id: { type: integer }
+        amount: { type: number, description: 'Positiv = Ausgabe, negativ = Einnahme (Rückzahlung)' }
+        effective_amount: { type: number, nullable: true, description: Gleiches Vorzeichen wie amount }
+        invoice_number: { type: string, maxLength: 255, nullable: true }
+        invoice_date: { type: string, format: date }
+        booking_date: { type: string, format: date, nullable: true }
+        description: { type: string, nullable: true }
+        recurrence_start: { type: string, format: date, nullable: true }
+        recurrence_end: { type: string, format: date, nullable: true }
+        disable_amount_cap: { type: boolean }
+    InvoiceCreateInput:
+      type: object
+      required: [invoice_issuer_id, invoice_date, periodicity, costable]
+      properties:
+        invoice_issuer_id: { type: integer }
+        invoice_issuer_account_id: { type: integer, nullable: true }
+        invoice_number: { type: string, maxLength: 255, nullable: true }
+        invoice_date: { type: string, format: date }
+        booking_date: { type: string, format: date, nullable: true }
+        description: { type: string, nullable: true }
+        amount: { type: number, description: 'Pflicht außer bei periodicity "manual"; positiv = Ausgabe, negativ = Einnahme (Rückzahlung)' }
+        effective_amount: { type: number, nullable: true, description: Gleiches Vorzeichen wie amount }
+        periodicity: { type: string, enum: [once, weekly, biweekly, monthly, quarterly, yearly, manual] }
+        recurrence_start: { type: string, format: date, nullable: true, description: 'Pflicht bei wiederkehrender Periodizität, außer bei generate_costs: false' }
+        recurrence_end: { type: string, format: date, nullable: true, description: 'Pflicht bei wiederkehrender Periodizität, außer bei generate_costs: false' }
+        generate_costs: { type: boolean, default: true, description: 'false = keine Kostenzeilen automatisch anlegen (Import); billing_interval_id und cost_category_id sind dann optional' }
+        occurrences:
+          type: array
+          description: 'Pflicht bei periodicity "manual"'
+          items:
+            type: object
+            required: [occurrence_date, amount]
+            properties:
+              occurrence_date: { type: string, format: date }
+              amount: { type: number, description: Alle Termine mit demselben Vorzeichen }
+        costable: { type: string, example: 'management_unit:3', description: 'Zuordnung "<typ>:<id>", typ = management_group | management_unit | rental_unit | lease' }
+        billing_interval_id: { type: integer, description: 'Pflicht, außer bei generate_costs: false' }
+        cost_category_id: { type: integer, description: 'Pflicht, außer bei generate_costs: false' }
+        disable_amount_cap: { type: boolean }
+    AllocationInput:
+      type: object
+      required: [cost_category_id]
+      properties:
+        cost_category_id: { type: integer, description: 'Systemweite Kategorie oder eine der Gruppe der Verwaltungsgruppe' }
+        amount: { type: number, nullable: true, description: 'Ohne Betrag: bei genau einem Anteil der ganze Rechnungsbetrag, sonst 0 (Betrag kommt mit den Buchungen)' }
+    InvoiceSeriesInput:
+      type: object
+      required: [invoice_issuer_id, invoice_date, periodicity, costable]
+      description: |
+        Rechnung mit Aufteilung und/oder Betragsintervallen. "Betragsüberprüfung": Ist bei
+        einer Aufteilung mindestens ein Betrag angegeben, muss die Summe dem wirksamen Betrag
+        (bzw. dem Betrag des Intervalls) entsprechen – außer disable_amount_cap ist true.
+      properties:
+        invoice_issuer_id: { type: integer }
+        invoice_issuer_account_id: { type: integer, nullable: true }
+        invoice_number: { type: string, maxLength: 255, nullable: true }
+        invoice_date: { type: string, format: date }
+        booking_date: { type: string, format: date, nullable: true }
+        description: { type: string, nullable: true }
+        amount: { type: number, description: 'Pflicht ohne segments, verboten mit segments' }
+        effective_amount: { type: number, nullable: true }
+        periodicity: { type: string, enum: [once, weekly, biweekly, monthly, quarterly, yearly], description: 'Mit segments nur wiederkehrend' }
+        recurrence_start: { type: string, format: date, nullable: true, description: 'Erster Termin; Standard: Buchungs- bzw. Rechnungsdatum. Verboten mit segments' }
+        recurrence_end: { type: string, format: date, nullable: true, description: 'Letzter möglicher Termin; ohne: bis Ende des Folgejahres. Verboten mit segments' }
+        costable: { type: string, example: 'lease:7' }
+        billing_interval_id: { type: integer, nullable: true, description: Alle Termine an dieses Abrechnungsintervall heften }
+        disable_amount_cap: { type: boolean }
+        allocations: { type: array, items: { $ref: '#/components/schemas/AllocationInput' }, description: 'Aufteilung auf Kategorien (z. B. Zins und Tilgung)' }
+        segments:
+          type: array
+          description: 'Betragsintervalle: lückenlos, nur das letzte ohne Ende; entweder jedes mit eigener Aufteilung oder keines (dann gilt allocations)'
+          items:
+            type: object
+            required: [start_date, amount]
+            properties:
+              start_date: { type: string, format: date }
+              end_date: { type: string, format: date, nullable: true }
+              amount: { type: number }
+              note: { type: string, nullable: true, description: Notiz an jeder Kostenzeile des Intervalls }
+              allocations: { type: array, items: { $ref: '#/components/schemas/AllocationInput' } }
+    Invoice:
+      allOf:
+        - $ref: '#/components/schemas/Timestamps'
+        - type: object
+          properties:
+            invoice_issuer_id: { type: integer }
+            invoice_issuer_account_id: { type: integer, nullable: true }
+            invoice_number: { type: string, nullable: true }
+            invoice_date: { type: string, format: date-time }
+            booking_date: { type: string, format: date-time, nullable: true }
+            description: { type: string, nullable: true }
+            amount: { type: number }
+            effective_amount: { type: number, nullable: true }
+            periodicity: { type: string }
+            costable_type: { type: string }
+            costable_id: { type: integer }
+            file_original_name: { type: string, nullable: true }
+            costs: { type: array, items: { $ref: '#/components/schemas/Cost' } }
+
+    CostInput:
+      type: object
+      required: [billing_interval_id, cost_category_id, amount]
+      properties:
+        billing_interval_id: { type: integer }
+        cost_category_id: { type: integer, description: 'Bei Zuordnung "lease" nur Kategorien mit Abrechnungsart "Individuell"' }
+        amount: { type: number, description: Vorzeichen wie die Rechnung (negativ bei Rückzahlungen) }
+        period_date: { type: string, format: date, nullable: true }
+        booking_date: { type: string, format: date, nullable: true }
+        account_id: { type: integer, nullable: true, description: 'Konto (Kontensystem); verboten bei Zuordnung "lease"' }
+        note: { type: string, nullable: true }
+        refresh_forecast: { type: boolean, default: true, description: 'false = bei wiederkehrenden Rechnungen keine Prognose-Kostenzeilen ergänzen (Import)' }
+    Cost:
+      allOf:
+        - $ref: '#/components/schemas/Timestamps'
+        - type: object
+          properties:
+            invoice_id: { type: integer }
+            costable_type: { type: string }
+            costable_id: { type: integer }
+            billing_interval_id: { type: integer }
+            cost_category_id: { type: integer }
+            amount: { type: number }
+            period_date: { type: string, format: date-time }
+            booking_date: { type: string, format: date-time, nullable: true }
+    RentPayment:
+      allOf:
+        - $ref: '#/components/schemas/Timestamps'
+        - type: object
+          properties:
+            lease_interval_id: { type: integer }
+            period_date: { type: string, format: date-time }
+            amount: { type: number }
+            rent_amount: { type: number }
+            utility_amount: { type: number }
+            booking_date: { type: string, format: date-time, nullable: true }
+    IssuerAccountInput:
+      type: object
+      required: [customer_number]
+      properties:
+        customer_number: { type: string }
+        description: { type: string, nullable: true }
+        direct_debit: { type: boolean }
+        notes: { type: string, nullable: true }
+    AccountInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        description: { type: string, nullable: true }
+        initial_balance: { type: number, nullable: true }
+        is_default: { type: boolean, description: Setzt alle anderen Konten der Verwaltungsgruppe auf "nicht Standard" }
+    MaintenanceContractInput:
+      type: object
+      required: [name, type, provider, start_date]
+      properties:
+        name: { type: string }
+        type: { type: string }
+        provider: { type: string }
+        start_date: { type: string, format: date }
+        end_date: { type: string, format: date, nullable: true }
+    LeaseIntervalInput:
+      type: object
+      required: [start_date, rent_amount, occupant_count, utility_advance_payment]
+      properties:
+        start_date: { type: string, format: date }
+        rent_amount: { type: number, minimum: 0 }
+        occupant_count: { type: integer, minimum: 0 }
+        utility_advance_payment: { type: number, minimum: 0 }
+        notes: { type: string, nullable: true }
+    SettlementClaimInput:
+      type: object
+      required: [billing_interval_id, date, amount]
+      properties:
+        billing_interval_id: { type: integer, description: Intervall derselben Verwaltungsgruppe }
+        date: { type: string, format: date }
+        amount: { type: number, description: 'positiv = Nachzahlung, negativ = Guthaben' }
+        booking_date: { type: string, format: date, nullable: true }
+        notes: { type: string, nullable: true }
+    BillingTemplateInput:
+      type: object
+      required: [user_group_id, name, content]
+      properties:
+        user_group_id: { type: integer }
+        name: { type: string }
+        content: { type: string }
+        css_content: { type: string, nullable: true }
+        header: { type: string, nullable: true }
+        footer: { type: string, nullable: true }

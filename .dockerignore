@@ -1,0 +1,46 @@
+# Versionsverwaltung, Editoren, Agenten
+.git
+.github
+.claude
+.codex
+.cursor
+.idea
+.vscode
+.zed
+*.log
+.DS_Store
+
+# Abhängigkeiten und Build-Ergebnisse (werden im Image neu erzeugt)
+node_modules
+vendor
+/public/build
+/public/docs
+/public/hot
+/public/storage
+
+# Private Daten – dürfen nie ins Image
+/private-assets
+/scripts
+/storage/app/*
+/storage/framework/cache/*
+/storage/framework/sessions/*
+/storage/framework/testing/*
+/storage/framework/views/*
+/storage/framework/mpdf
+/storage/logs/*
+/storage/pail
+/storage/*.key
+/database/*.sqlite
+/database/*.sqlite.*
+/database/*.sqlite-*
+.env
+.env.*
+!.env.example
+
+# Nur für Entwicklung und Tests
+/Doxyfile
+/tests
+/phpunit.xml
+.phpunit.cache
+.phpunit.result.cache
+__pycache__

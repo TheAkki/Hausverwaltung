@@ -1,0 +1,99 @@
+# Hausverwaltung mit Docker Compose – Anleitung: docker/README.md
+#
+#   cp .env.docker.example .env.docker      # Werte anpassen
+#   docker compose --env-file .env.docker up -d --build
+#
+# Datenbank (DB_CONNECTION in .env.docker):
+#   sqlite            – ohne weiteren Dienst, Datei im storage-Volume (Standard)
+#   mysql / mariadb   – mit COMPOSE_PROFILES=mariadb startet ein MariaDB-Container,
+#                       sonst DB_HOST auf einen vorhandenen Server setzen
+#   pgsql             – mit COMPOSE_PROFILES=postgres startet ein PostgreSQL-Container,
+#                       sonst DB_HOST auf einen vorhandenen Server setzen
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hausverwaltung:latest
+    ports:
+      - "${APP_PORT:-8080}:80"
+    environment:
+      APP_NAME: ${APP_NAME:-Hausverwaltung}
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_URL: ${APP_URL:-http://localhost:8080}
+      # Leer: der Container erzeugt beim ersten Start einen Schlüssel im storage-Volume.
+      APP_KEY: ${APP_KEY:-}
+      APP_LOCALE: ${APP_LOCALE:-de}
+      APP_FALLBACK_LOCALE: en
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      DB_CONNECTION: ${DB_CONNECTION:-sqlite}
+      DB_HOST: ${DB_HOST:-}
+      DB_PORT: ${DB_PORT:-}
+      DB_DATABASE: ${DB_DATABASE:-}
+      DB_USERNAME: ${DB_USERNAME:-}
+      DB_PASSWORD: ${DB_PASSWORD:-}
+      DB_SSLMODE: ${DB_SSLMODE:-prefer}
+      DB_WAIT_TIMEOUT: ${DB_WAIT_TIMEOUT:-60}
+      SESSION_DRIVER: database
+      SESSION_SECURE_COOKIE: ${SESSION_SECURE_COOKIE:-false}
+      CACHE_STORE: database
+      QUEUE_CONNECTION: database
+      LOG_CHANNEL: stderr
+      LOG_LEVEL: ${LOG_LEVEL:-warning}
+      MAIL_MAILER: ${MAIL_MAILER:-log}
+      MAIL_HOST: ${MAIL_HOST:-}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-}
+      MAIL_FROM_NAME: ${APP_NAME:-Hausverwaltung}
+    volumes:
+      - storage:/var/www/html/storage
+    depends_on:
+      mariadb:
+        condition: service_healthy
+        required: false
+      postgres:
+        condition: service_healthy
+        required: false
+    restart: unless-stopped
+
+  mariadb:
+    image: mariadb:11
+    profiles: [mariadb]
+    environment:
+      MARIADB_DATABASE: ${DB_DATABASE:-}
+      MARIADB_USER: ${DB_USERNAME:-}
+      MARIADB_PASSWORD: ${DB_PASSWORD:-}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-}
+    volumes:
+      # Name wie in früheren Versionen, damit vorhandene Daten erhalten bleiben.
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:18-alpine
+    profiles: [postgres]
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-}
+      POSTGRES_USER: ${DB_USERNAME:-}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  storage:
+  db-data:
+  postgres-data:

@@ -1,0 +1,38 @@
+*.log
+.DS_Store
+.env
+.env.backup
+.env.production
+.env.docker
+.phpactor.json
+.phpunit.result.cache
+/.codex
+/.cursor/
+/.idea
+/.nova
+/.phpunit.cache
+/.vscode
+/.zed
+/auth.json
+/node_modules
+/public/build
+/public/docs
+/public/fonts-manifest.dev.json
+/public/hot
+/public/storage
+/storage/*.key
+/storage/pail
+/storage/framework/mpdf/
+/vendor
+_ide_helper.php
+Homestead.json
+Homestead.yaml
+Thumbs.db
+private-assets/
+# Eigene, private Datendateien für scripts/api-client (nicht veröffentlichen)
+/scripts/api-client/meine_daten/
+__pycache__/
+# Internes Entwicklungsprotokoll (enthält Details aus privaten Daten, nicht veröffentlichen)
+/Entwicklungsprotokoll.md
+# Lokale Einstellungen von Claude Code (enthalten lokale Pfade)
+/.claude/settings.local.json
