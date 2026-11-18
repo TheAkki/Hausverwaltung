@@ -1,6 +1,8 @@
 # Ergänzung zu docker-compose.yml: das Image aus dem Quellcode bauen statt es aus
-# der Registry zu laden.
+# der Registry zu laden. Im Repository ist .env die Datei der Entwicklung, deshalb
+# kommen die Docker-Einstellungen hier aus .env.docker:
 #
+#   cp .env.docker.example .env.docker      # bearbeiten
 #   docker compose -f docker-compose.yml -f docker-compose.build.yml --env-file .env.docker up -d --build
 services:
   app:
@@ -9,3 +11,6 @@ services:
       dockerfile: Dockerfile
     image: hausverwaltung:lokal
     pull_policy: build
+    env_file: !override
+      - path: .env.docker
+        required: true

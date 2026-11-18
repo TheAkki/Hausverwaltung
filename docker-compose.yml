@@ -1,13 +1,25 @@
 # Hausverwaltung mit Docker Compose – Anleitung: docker/README.md
 #
-#   cp .env.docker.example .env.docker      # Werte anpassen
-#   docker compose --env-file .env.docker up -d
+# Betrieb mit dem fertigen Image aus der GitHub Container Registry, in einem eigenen
+# Verzeichnis neben dieser Datei:
 #
-# Verwendet das fertige Image aus der GitHub Container Registry (HV_VERSION in
-# .env.docker). Selbst bauen statt herunterladen:
+#   curl -fsSL -o .env https://raw.githubusercontent.com/TheAkki/Hausverwaltung/main/.env.docker.example
+#   # .env bearbeiten (mindestens ADMIN_EMAIL)
+#   docker compose up -d
+#
+# Die Datei .env wird doppelt genutzt:
+#   - Compose liest daraus Port, Image-Version und Profil (APP_PORT, HV_VERSION,
+#     COMPOSE_PROFILES) sowie die Zugangsdaten für einen mitgelieferten
+#     Datenbank-Container.
+#   - Der App-Container bekommt alle Einträge als Umgebungsvariablen (env_file).
+#     Weitere Laravel-Einstellungen können dort ohne Änderung dieser Datei ergänzt
+#     werden.
+#
+# Aus dem geklonten Repository selbst bauen (dort ist .env die Entwicklungsdatei,
+# deshalb .env.docker):
 #   docker compose -f docker-compose.yml -f docker-compose.build.yml --env-file .env.docker up -d --build
 #
-# Datenbank (DB_CONNECTION in .env.docker):
+# Datenbank (DB_CONNECTION in .env):
 #   sqlite            – ohne weiteren Dienst, Datei im storage-Volume (Standard)
 #   mysql / mariadb   – mit COMPOSE_PROFILES=mariadb startet ein MariaDB-Container,
 #                       sonst DB_HOST auf einen vorhandenen Server setzen
@@ -18,37 +30,18 @@ services:
     image: ${HV_IMAGE:-ghcr.io/theakki/hausverwaltung}:${HV_VERSION:-latest}
     ports:
       - "${APP_PORT:-8080}:80"
+    env_file:
+      - path: .env
+        required: true
+    # Feste Werte für den Docker-Betrieb; sie haben Vorrang vor der .env.
     environment:
-      APP_NAME: ${APP_NAME:-Hausverwaltung}
       APP_ENV: production
       APP_DEBUG: "false"
-      APP_URL: ${APP_URL:-http://localhost:8080}
-      # Leer: der Container erzeugt beim ersten Start einen Schlüssel im storage-Volume.
-      APP_KEY: ${APP_KEY:-}
-      APP_LOCALE: ${APP_LOCALE:-de}
-      APP_FALLBACK_LOCALE: en
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
-      DB_CONNECTION: ${DB_CONNECTION:-sqlite}
-      DB_HOST: ${DB_HOST:-}
-      DB_PORT: ${DB_PORT:-}
-      DB_DATABASE: ${DB_DATABASE:-}
-      DB_USERNAME: ${DB_USERNAME:-}
-      DB_PASSWORD: ${DB_PASSWORD:-}
-      DB_SSLMODE: ${DB_SSLMODE:-prefer}
-      DB_WAIT_TIMEOUT: ${DB_WAIT_TIMEOUT:-60}
-      SESSION_DRIVER: database
-      SESSION_SECURE_COOKIE: ${SESSION_SECURE_COOKIE:-false}
-      CACHE_STORE: database
-      QUEUE_CONNECTION: database
       LOG_CHANNEL: stderr
       LOG_LEVEL: ${LOG_LEVEL:-warning}
-      MAIL_MAILER: ${MAIL_MAILER:-log}
-      MAIL_HOST: ${MAIL_HOST:-}
-      MAIL_PORT: ${MAIL_PORT:-587}
-      MAIL_USERNAME: ${MAIL_USERNAME:-}
-      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
-      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-}
-      MAIL_FROM_NAME: ${APP_NAME:-Hausverwaltung}
+      SESSION_DRIVER: database
+      CACHE_STORE: database
+      QUEUE_CONNECTION: database
     volumes:
       - storage:/var/www/html/storage
     depends_on:
@@ -67,7 +60,9 @@ services:
       MARIADB_DATABASE: ${DB_DATABASE:-}
       MARIADB_USER: ${DB_USERNAME:-}
       MARIADB_PASSWORD: ${DB_PASSWORD:-}
-      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-}
+      # Die Anwendung braucht kein Root-Konto; MariaDB vergibt ein zufälliges
+      # Passwort, das nirgends gespeichert werden muss.
+      MARIADB_RANDOM_ROOT_PASSWORD: "1"
     volumes:
       # Name wie in früheren Versionen, damit vorhandene Daten erhalten bleiben.
       - db-data:/var/lib/mysql

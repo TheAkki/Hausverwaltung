@@ -52,9 +52,9 @@ PostgreSQL.
 ```bash
 mkdir hausverwaltung && cd hausverwaltung
 curl -fsSLO https://raw.githubusercontent.com/TheAkki/Hausverwaltung/main/docker-compose.yml
-curl -fsSL -o .env.docker https://raw.githubusercontent.com/TheAkki/Hausverwaltung/main/.env.docker.example
-# .env.docker bearbeiten: mindestens ADMIN_EMAIL, empfohlen eine feste HV_VERSION
-docker compose --env-file .env.docker up -d
+curl -fsSL -o .env https://raw.githubusercontent.com/TheAkki/Hausverwaltung/main/.env.docker.example
+# .env bearbeiten: mindestens ADMIN_EMAIL, empfohlen eine feste HV_VERSION
+docker compose up -d
 ```
 
 Die Anwendung läuft dann unter http://localhost:8080. Registriere dich dort mit der

@@ -22,6 +22,7 @@
 - Zuerst Planen und Nachfragen, danach ausführen und wenig unterbrechen
 - Im Unterordner private-assets keine Änderungen vornehmen.
 - Wenn aus Testdateien oder Seeddateien persönliche Daten enthalten sind dürfen diese nur anonymisiert in Tests oder Kommentare verwendet werden.
+- Checke nicht selbstständig in Git ein
 
 ## Lizensierung
 - Bereite die Dateien darauf vor das Projekt unter einer neuen GPL auf GitHub zur Verfügung zu stellen. Das beinhaltet auch eine Readme.md mit einer Anleitung.

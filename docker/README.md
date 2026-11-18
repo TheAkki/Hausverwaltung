@@ -11,22 +11,38 @@ genügen zwei Dateien, das Repository muss nicht geklont werden:
 ```bash
 mkdir hausverwaltung && cd hausverwaltung
 curl -fsSLO https://raw.githubusercontent.com/TheAkki/Hausverwaltung/main/docker-compose.yml
-curl -fsSL -o .env.docker https://raw.githubusercontent.com/TheAkki/Hausverwaltung/main/.env.docker.example
-# .env.docker öffnen: mindestens ADMIN_EMAIL eintragen, Version und Datenbank wählen
-docker compose --env-file .env.docker up -d
+curl -fsSL -o .env https://raw.githubusercontent.com/TheAkki/Hausverwaltung/main/.env.docker.example
+# .env öffnen: mindestens ADMIN_EMAIL eintragen, Version und Datenbank wählen
+docker compose up -d
 ```
 
 Danach ist die Anwendung unter `APP_URL` erreichbar (Standard
 http://localhost:8080). Registriere dich dort mit der Adresse aus `ADMIN_EMAIL`; dieses
 Konto ist der Administrator.
 
-`.env.docker` enthält Passwörter. Sie ist per `.gitignore` ausgeschlossen und darf nicht
-eingecheckt werden. Die Datei `.env` im Projektordner bleibt der Entwicklung vorbehalten.
-Deshalb immer `--env-file .env.docker` angeben.
+## Die Datei `.env`
+
+Alle Einstellungen stehen in der Datei `.env` neben `docker-compose.yml`. Compose nutzt sie
+auf zwei Wegen:
+
+- **Compose selbst** liest daraus Port, Image-Version und Profil (`APP_PORT`,
+  `HV_VERSION`, `COMPOSE_PROFILES`) und die Zugangsdaten für einen mitgelieferten
+  Datenbank-Container.
+- **Die Anwendung** bekommt alle Einträge als Umgebungsvariablen (`env_file`). Weitere
+  Laravel-Einstellungen, etwa `MAIL_ENCRYPTION`, trägst du einfach dort ein. Die
+  Compose-Datei muss dafür nicht geändert werden.
+
+Nicht überschreiben lassen sich die Werte, die im Docker-Betrieb fest sind: `APP_ENV`
+(production), `APP_DEBUG` (aus), Logs nach stderr sowie Sitzungen, Cache und Warteschlange
+in der Datenbank.
+
+Die Datei enthält Passwörter: nicht weitergeben und nicht einchecken. Werte ohne
+Anführungszeichen schreiben, Kommentare immer in eigene Zeilen. Fehlt die Datei, bricht
+`docker compose up` mit einer Meldung ab.
 
 ## Versionen und Updates
 
-`HV_VERSION` in `.env.docker` wählt das Image:
+`HV_VERSION` in `.env` wählt das Image:
 
 | Wert | Bedeutung |
 |---|---|
@@ -35,12 +51,11 @@ Deshalb immer `--env-file .env.docker` angeben.
 | `latest` | die neueste veröffentlichte Version |
 | `edge` | aktueller Entwicklungsstand von `main`, nur zum Testen |
 
-Aktualisieren: Version in `.env.docker` anpassen (oder bei `latest` unverändert lassen),
-dann:
+Aktualisieren: Version in `.env` anpassen (oder bei `latest` unverändert lassen), dann:
 
 ```bash
-docker compose --env-file .env.docker pull
-docker compose --env-file .env.docker up -d
+docker compose pull
+docker compose up -d
 ```
 
 Die Migrationen laufen beim Start automatisch. Vorher eine Sicherung anlegen (siehe
@@ -48,21 +63,25 @@ unten).
 
 ## Image selbst bauen
 
-Aus einem geklonten Repository, statt das Image herunterzuladen:
+Aus einem geklonten Repository, statt das Image herunterzuladen. Dort ist `.env` die
+Datei der Entwicklungsumgebung, deshalb kommen die Docker-Einstellungen aus
+`.env.docker`. Die Datei ist per `.gitignore` ausgeschlossen, und
+[docker-compose.build.yml](../docker-compose.build.yml) lädt sie anstelle der `.env`:
 
 ```bash
+cp .env.docker.example .env.docker      # bearbeiten
 docker compose -f docker-compose.yml -f docker-compose.build.yml --env-file .env.docker up -d --build
 ```
 
 ## Datenbank wählen
 
-Die Wahl trifft `DB_CONNECTION` in `.env.docker`. Alle Varianten stehen auskommentiert
+Die Wahl trifft `DB_CONNECTION` in `.env`. Alle Varianten stehen auskommentiert
 in [.env.docker.example](../.env.docker.example).
 
 | Variante | `DB_CONNECTION` | Mitgelieferter Server | Weitere Angaben |
 |---|---|---|---|
 | SQLite (Standard) | `sqlite` | – | keine; Datei im `storage`-Volume |
-| MariaDB | `mariadb` | `COMPOSE_PROFILES=mariadb`, `DB_HOST=mariadb` | `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`, `DB_ROOT_PASSWORD` |
+| MariaDB | `mariadb` | `COMPOSE_PROFILES=mariadb`, `DB_HOST=mariadb` | `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` |
 | MySQL | `mysql` | – (eigener Server) | `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD` |
 | PostgreSQL | `pgsql` | `COMPOSE_PROFILES=postgres`, `DB_HOST=postgres` | `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`, optional `DB_SSLMODE` |
 
@@ -70,6 +89,9 @@ in [.env.docker.example](../.env.docker.example).
   Bedarf `DB_PORT`) auf den Server setzen. Datenbank und Benutzer müssen dort schon
   existieren.
 - **Standardports:** 3306 für MySQL/MariaDB, 5432 für PostgreSQL.
+- **Root-Konto:** Der mitgelieferte MariaDB-Container bekommt ein zufälliges
+  Root-Passwort. Die Anwendung braucht es nicht, deshalb steht es auch nirgends in der
+  `.env`.
 - **Start:** Der Container wartet bis zu `DB_WAIT_TIMEOUT` Sekunden (Standard 60) auf
   den Server und führt dann die Migrationen aus.
 - **Wechsel:** Ein Wechsel der Datenbank überträgt keine Daten. Dafür im alten System
@@ -87,8 +109,7 @@ in [.env.docker.example](../.env.docker.example).
 4. **Referenzdaten:** Standardkategorien, Standardvorlage und Themes werden ergänzt.
    Vorhandenes bleibt unverändert.
 5. **Caches:** Konfiguration, Routen und Views werden zwischengespeichert. Nach
-   Änderungen an `.env.docker` genügt deshalb ein Neustart:
-   `docker compose --env-file .env.docker up -d`.
+   Änderungen an `.env` genügt deshalb: `docker compose up -d`.
 
 ## Daten und Sicherung
 
