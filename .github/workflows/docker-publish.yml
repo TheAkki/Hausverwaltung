@@ -23,7 +23,8 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  DIGEST_DIR: ${{ github.workspace }}/../digests
+  # Unterordner in runner.temp (upload-artifact erlaubt kein ".." im Pfad)
+  DIGEST_SUBDIR: digests
   DIGEST_ARTIFACT_PREFIX: digests-
 
 jobs:
@@ -53,17 +54,17 @@ jobs:
           platform='${{ matrix.platform }}'
           echo "PLATFORM_PAIR=${platform//\//-}" >> "$GITHUB_ENV"
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Metadaten (Labels)
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -71,7 +72,7 @@ jobs:
 
       - name: Bauen und nach Digest hochladen
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: ${{ matrix.platform }}
@@ -86,14 +87,15 @@ jobs:
 
       - name: Digest merken
         run: |
-          mkdir -p "$DIGEST_DIR"
+          digest_dir="${RUNNER_TEMP}/${DIGEST_SUBDIR}"
+          mkdir -p "$digest_dir"
           digest='${{ steps.build.outputs.digest }}'
-          touch "$DIGEST_DIR/${digest#sha256:}"
+          touch "$digest_dir/${digest#sha256:}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ env.DIGEST_ARTIFACT_PREFIX }}${{ env.PLATFORM_PAIR }}
-          path: ${{ env.DIGEST_DIR }}/*
+          path: ${{ runner.temp }}/${{ env.DIGEST_SUBDIR }}/*
           if-no-files-found: error
           retention-days: 1
 
@@ -108,17 +110,17 @@ jobs:
       - name: Namen vorbereiten
         run: echo "IMAGE=${REGISTRY}/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
-          path: ${{ env.DIGEST_DIR }}
+          path: ${{ runner.temp }}/${{ env.DIGEST_SUBDIR }}
           pattern: ${{ env.DIGEST_ARTIFACT_PREFIX }}*
           merge-multiple: true
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       - name: Metadaten (Tags)
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
           tags: |
@@ -129,14 +131,14 @@ jobs:
           flavor: |
             latest=auto
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Multi-Arch-Image anlegen
-        working-directory: ${{ env.DIGEST_DIR }}
+        working-directory: ${{ runner.temp }}/${{ env.DIGEST_SUBDIR }}
         run: |
           args=()
           mapfile -t tags < <(jq -r '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON")
