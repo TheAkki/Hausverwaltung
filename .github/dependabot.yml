@@ -1,0 +1,15 @@
+# Hält die Versionen der GitHub Actions und der Docker-Basis-Images aktuell.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly

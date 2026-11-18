@@ -88,6 +88,15 @@ RUN composer audit --no-dev --locked --abandoned=ignore \
 # ---- Laufzeit-Image -----------------------------------------------------------
 FROM base AS app
 
+# Metadaten (OCI). Beim Build über GitHub Actions ergänzt bzw. überschreibt
+# docker/metadata-action sie um Version, Commit und Erstellungszeit.
+ARG IMAGE_SOURCE=https://github.com/TheAkki/Hausverwaltung
+LABEL org.opencontainers.image.title="Hausverwaltung" \
+      org.opencontainers.image.description="Verwaltung von Mietimmobilien mit Betriebskostenabrechnung" \
+      org.opencontainers.image.source="${IMAGE_SOURCE}" \
+      org.opencontainers.image.documentation="${IMAGE_SOURCE}/blob/main/docker/README.md" \
+      org.opencontainers.image.licenses="GPL-2.0-or-later"
+
 COPY --from=build /var/www/html /var/www/html
 
 COPY docker/nginx/default.conf /etc/nginx/sites-available/default

@@ -1,0 +1,11 @@
+# Ergänzung zu docker-compose.yml: das Image aus dem Quellcode bauen statt es aus
+# der Registry zu laden.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml --env-file .env.docker up -d --build
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hausverwaltung:lokal
+    pull_policy: build

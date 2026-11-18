@@ -24,4 +24,7 @@ Erste öffentliche Version unter der GNU General Public License, Version 2 oder 
 - **REST-API:** mit OpenAPI-Dokumentation (`/api-docs`) und Python-Client für den
   Datenimport.
 - **Oberfläche:** Deutsch und Englisch, Themes.
-- **Docker:** Image mit wählbarer Datenbank (SQLite, MySQL/MariaDB, PostgreSQL).
+- **Docker:** Image mit wählbarer Datenbank (SQLite, MySQL/MariaDB, PostgreSQL),
+  veröffentlicht als `ghcr.io/theakki/hausverwaltung` für amd64 und arm64.
+- **GitHub Actions:** Tests bei jedem Pull Request; Versions-Tags bauen und
+  veröffentlichen das Image automatisch.

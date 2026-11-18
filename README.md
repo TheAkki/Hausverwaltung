@@ -43,14 +43,18 @@ in der Anwendung unter **Hilfe** erreichbar. Das fachliche Konzept steht in
 
 ## Schnellstart mit Docker
 
-Der einfachste Weg für den Betrieb. Die Datenbank ist wählbar: SQLite, MySQL/MariaDB oder
+Der einfachste Weg für den Betrieb. Ein fertiges Image für amd64 und arm64 (z. B.
+Raspberry Pi) liegt in der
+[GitHub Container Registry](https://github.com/TheAkki/Hausverwaltung/pkgs/container/hausverwaltung),
+Klonen und Bauen sind nicht nötig. Die Datenbank ist wählbar: SQLite, MySQL/MariaDB oder
 PostgreSQL.
 
 ```bash
-git clone https://github.com/TheAkki/Hausverwaltung.git
-cd Hausverwaltung
-cp .env.docker.example .env.docker      # mindestens ADMIN_EMAIL eintragen
-docker compose --env-file .env.docker up -d --build
+mkdir hausverwaltung && cd hausverwaltung
+curl -fsSLO https://raw.githubusercontent.com/TheAkki/Hausverwaltung/main/docker-compose.yml
+curl -fsSL -o .env.docker https://raw.githubusercontent.com/TheAkki/Hausverwaltung/main/.env.docker.example
+# .env.docker bearbeiten: mindestens ADMIN_EMAIL, empfohlen eine feste HV_VERSION
+docker compose --env-file .env.docker up -d
 ```
 
 Die Anwendung läuft dann unter http://localhost:8080. Registriere dich dort mit der
@@ -129,6 +133,22 @@ cd scripts/api-client               # Python-Client
 python3 -m unittest discover -s tests -t .
 flake8 .
 ```
+
+### Version veröffentlichen
+
+1. In [CHANGELOG.md](CHANGELOG.md) den Abschnitt „Unveröffentlicht“ in die neue Version
+   umbenennen.
+2. Taggen und pushen:
+
+   ```bash
+   git tag v1.0.0
+   git push origin v1.0.0
+   ```
+
+GitHub Actions führt alle Tests aus, baut das Image auf GitHub-Servern für amd64 und
+arm64 und veröffentlicht es als `ghcr.io/theakki/hausverwaltung` mit den Tags `v1.0.0`,
+`v1.0`, `v1` und `latest`. Jeder Push auf `main` erzeugt zusätzlich das Testimage
+`edge`. Details: [.github/workflows/docker-publish.yml](.github/workflows/docker-publish.yml).
 
 ### Mitwirken
 

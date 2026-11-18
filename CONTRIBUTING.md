@@ -35,6 +35,10 @@ Requests sind willkommen.
 5. Trage nutzersichtbare Änderungen unter „Unveröffentlicht“ im
    [CHANGELOG.md](CHANGELOG.md) ein.
 
+GitHub Actions führt die Tests für jeden Pull Request aus
+([tests.yml](.github/workflows/tests.yml)). Docker-Images veröffentlicht nur der
+Maintainer über Versions-Tags (siehe README, „Version veröffentlichen“).
+
 ## Lizenz deiner Beiträge
 
 Die Hausverwaltung steht unter der GNU General Public License, Version 2 oder später

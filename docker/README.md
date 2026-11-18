@@ -5,10 +5,15 @@ Datenbank ist wählbar: SQLite, MySQL/MariaDB oder PostgreSQL.
 
 ## Schnellstart
 
+Das fertige Image `ghcr.io/theakki/hausverwaltung` gibt es für amd64 und arm64. Dafür
+genügen zwei Dateien, das Repository muss nicht geklont werden:
+
 ```bash
-cp .env.docker.example .env.docker
-# .env.docker öffnen: mindestens ADMIN_EMAIL eintragen, Datenbank wählen
-docker compose --env-file .env.docker up -d --build
+mkdir hausverwaltung && cd hausverwaltung
+curl -fsSLO https://raw.githubusercontent.com/TheAkki/Hausverwaltung/main/docker-compose.yml
+curl -fsSL -o .env.docker https://raw.githubusercontent.com/TheAkki/Hausverwaltung/main/.env.docker.example
+# .env.docker öffnen: mindestens ADMIN_EMAIL eintragen, Version und Datenbank wählen
+docker compose --env-file .env.docker up -d
 ```
 
 Danach ist die Anwendung unter `APP_URL` erreichbar (Standard
@@ -18,6 +23,36 @@ Konto ist der Administrator.
 `.env.docker` enthält Passwörter. Sie ist per `.gitignore` ausgeschlossen und darf nicht
 eingecheckt werden. Die Datei `.env` im Projektordner bleibt der Entwicklung vorbehalten.
 Deshalb immer `--env-file .env.docker` angeben.
+
+## Versionen und Updates
+
+`HV_VERSION` in `.env.docker` wählt das Image:
+
+| Wert | Bedeutung |
+|---|---|
+| `v1.2.3` | genau diese Version (empfohlen) |
+| `v1.2` bzw. `v1` | jeweils die neueste Version dieser Reihe |
+| `latest` | die neueste veröffentlichte Version |
+| `edge` | aktueller Entwicklungsstand von `main`, nur zum Testen |
+
+Aktualisieren: Version in `.env.docker` anpassen (oder bei `latest` unverändert lassen),
+dann:
+
+```bash
+docker compose --env-file .env.docker pull
+docker compose --env-file .env.docker up -d
+```
+
+Die Migrationen laufen beim Start automatisch. Vorher eine Sicherung anlegen (siehe
+unten).
+
+## Image selbst bauen
+
+Aus einem geklonten Repository, statt das Image herunterzuladen:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml --env-file .env.docker up -d --build
+```
 
 ## Datenbank wählen
 
@@ -75,9 +110,10 @@ lassen sich verschlüsselte Daten nicht mehr lesen.
   `/storage` liefert 404.
 - **HTTPS:** Hinter einem Reverse Proxy mit HTTPS `SESSION_SECURE_COOKIE=true` setzen.
 - **Sicherheitslücken:** Beim Bauen prüft `composer audit` die PHP-Pakete auf bekannte
-  Lücken und warnt im Build-Log. Mit
-  `docker compose build --build-arg FAIL_ON_AUDIT=true` bricht der Build bei einem
-  Fund ab.
+  Lücken. Die veröffentlichten Images werden mit `FAIL_ON_AUDIT=true` gebaut: Bei einem
+  Fund wird nichts veröffentlicht. Beim eigenen Bauen gibt es nur eine Warnung im
+  Build-Log, es sei denn, du baust mit
+  `docker compose -f docker-compose.yml -f docker-compose.build.yml build --build-arg FAIL_ON_AUDIT=true`.
 
 ## Einstellungen beim Bauen
 

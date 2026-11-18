@@ -1,7 +1,11 @@
 # Hausverwaltung mit Docker Compose – Anleitung: docker/README.md
 #
 #   cp .env.docker.example .env.docker      # Werte anpassen
-#   docker compose --env-file .env.docker up -d --build
+#   docker compose --env-file .env.docker up -d
+#
+# Verwendet das fertige Image aus der GitHub Container Registry (HV_VERSION in
+# .env.docker). Selbst bauen statt herunterladen:
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml --env-file .env.docker up -d --build
 #
 # Datenbank (DB_CONNECTION in .env.docker):
 #   sqlite            – ohne weiteren Dienst, Datei im storage-Volume (Standard)
@@ -11,10 +15,7 @@
 #                       sonst DB_HOST auf einen vorhandenen Server setzen
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: hausverwaltung:latest
+    image: ${HV_IMAGE:-ghcr.io/theakki/hausverwaltung}:${HV_VERSION:-latest}
     ports:
       - "${APP_PORT:-8080}:80"
     environment:

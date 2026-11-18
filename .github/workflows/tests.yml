@@ -1,0 +1,73 @@
+# Tests und Prüfungen: bei jedem Pull Request und vor jedem Image-Build
+# (aufgerufen von docker-publish.yml).
+name: Tests
+
+on:
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  PHP_VERSION: "8.3"
+  NODE_VERSION: "22"
+  PHP_EXTENSIONS: bcmath, gd, intl, mbstring, pdo_sqlite, zip
+
+jobs:
+  php-js:
+    name: PHP- und JavaScript-Tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: ${{ env.PHP_EXTENSIONS }}
+          coverage: none
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: PHP-Abhängigkeiten
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Bekannte Sicherheitslücken (PHP)
+        run: composer audit --locked
+
+      - name: Frontend bauen
+        run: |
+          npm ci --ignore-scripts
+          npm run build
+
+      - name: Bekannte Sicherheitslücken (npm)
+        run: npm audit --omit=dev
+
+      - name: Anwendung vorbereiten
+        run: |
+          cp .env.example .env
+          php artisan key:generate --no-interaction
+
+      - name: PHP-Tests
+        run: php artisan test --compact
+
+      - name: JavaScript-Tests
+        run: npm test
+
+  api-client:
+    name: Python-API-Client
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: scripts/api-client
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Tests
+        run: python3 -m unittest discover -s tests -t .
+
+      - name: Linter
+        run: pipx run flake8 .
