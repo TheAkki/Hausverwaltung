@@ -109,6 +109,11 @@ COPY docker/database-ready.php /usr/local/lib/hausverwaltung/database-ready.php
 RUN chown -R www-data:www-data storage bootstrap/cache \
     && chmod -R u+rwX,g+rwX,o-rwx storage bootstrap/cache
 
+# Links und Weiterleitungen immer aus APP_URL bilden: nginx in Debian reicht den Port
+# nicht an PHP weiter (siehe App\Services\CanonicalUrl). Fest im Image, damit es
+# unabhängig von der Compose-Datei gilt.
+ENV APP_FORCE_URL=true
+
 EXPOSE 80
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \

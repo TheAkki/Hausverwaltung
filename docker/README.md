@@ -59,11 +59,20 @@ Nicht überschreiben lassen sich die Werte, die im Docker-Betrieb fest sind: `AP
 (production), `APP_DEBUG` (aus), Logs nach stderr sowie Sitzungen, Cache und Warteschlange
 in der Datenbank.
 
-**`APP_URL` muss stimmen:** Alle Links und Weiterleitungen entstehen aus `APP_URL`
-(`APP_FORCE_URL` ist fest eingeschaltet). Trage die Adresse genau so ein, wie sie im
-Browser steht, mit Port (`http://localhost:8080`) oder, hinter einem Reverse Proxy, mit
-`https://`. Hintergrund: nginx in Debian reicht aus Sicherheitsgründen nur den Hostnamen
-ohne Port an PHP weiter.
+**Port und Adresse:** Den Port änderst du nur bei `APP_PORT`. `APP_URL` übernimmt ihn
+über `${APP_PORT}`:
+
+```dotenv
+APP_PORT=8181
+APP_URL=http://msi-box:${APP_PORT}
+```
+
+Alle Links und Weiterleitungen entstehen aus `APP_URL` (`APP_FORCE_URL` ist im Image
+fest eingeschaltet). Der Host muss deshalb der sein, den du im Browser eingibst: `localhost`
+nur auf demselben Rechner, sonst Name oder IP des Servers. Hinter einem Reverse Proxy mit
+HTTPS trägst du die öffentliche Adresse ohne Port ein (`https://hausverwaltung.example.org`).
+`APP_PORT` bestimmt dann nur noch, wo der Proxy den Container erreicht. Hintergrund: nginx
+in Debian reicht aus Sicherheitsgründen nur den Hostnamen ohne Port an PHP weiter.
 
 Die Datei enthält Passwörter: nicht weitergeben und nicht einchecken. Werte ohne
 Anführungszeichen schreiben, Kommentare immer in eigene Zeilen. Fehlt die Datei, bricht
