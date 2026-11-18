@@ -68,6 +68,16 @@ class User extends Authenticatable
         return $this->hasMany(Group::class, 'owner_id');
     }
 
+    /**
+     * Die persönliche Gruppe ("Gruppe von <Name>"): Der UserObserver legt sie beim
+     * Erstellen des Benutzers an, sie ist deshalb die erste Gruppe, die er besitzt.
+     * Gemeinsame Gruppen, in denen er nur Mitglied ist, zählen nicht.
+     */
+    public function personalGroup(): ?Group
+    {
+        return $this->ownedGroups()->orderBy('id')->first();
+    }
+
     public function isAdminOf(Group $group): bool
     {
         $membership = $this->groups->firstWhere('id', $group->id);

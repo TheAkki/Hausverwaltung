@@ -1,24 +1,60 @@
 """Stammdaten einer Gruppe: Vermieter, Mieter, Rechnungssteller, Kategorien, Vorlagen."""
 
-from .base import SEPARATOR, Base
-from .report import UPDATED
+from .base import SEPARATOR, Base, without_none
+from .report import EXISTING, UPDATED
 from .session import FAILED, Record
 
 TENANT_KEY_FIELDS = ("first_name", "last_name", "street", "postal_code", "city")
 ISSUER_KEY_FIELDS = ("name", "postal_code", "city")
 TEMPLATE_TEXT_FIELDS = ("content", "css_content", "header", "footer")
+# Feld von GET /user mit der persönlichen Gruppe (fehlt bei Servern vor dieser Funktion).
+PERSONAL_GROUP_FIELD = "personal_group"
+PERSONAL_GROUP_LABEL = "persönliche Gruppe"
 
 
 class MasterData(Base):
-    def group(self, name: str) -> Record:
-        """Eine eigene Gruppe, z. B. "Gruppe von Anna" oder eine vom Administrator
-        eingerichtete gemeinsame Gruppe. Gruppen legt der Administrator an."""
-        found = next((g for g in self.session.get("/groups") or [] if g.get("name") == name), None)
+    def group(self, name: str, create: bool = False, description: str | None = None) -> Record:
+        """Eine Gruppe, in der du Mitglied bist, z. B. "Gruppe von Anna" oder eine
+        gemeinsame Gruppe.
+
+        Mit ``create=True`` legst du die Gruppe selbst an, falls es sie noch nicht gibt;
+        du bist dann Besitzer und Admin. Ohne den Schalter muss sie schon existieren
+        (z. B. vom Administrator eingerichtet) – so erzeugt ein Tippfehler im Namen
+        keine neue Gruppe."""
+        if create:
+            return self.session.ensure(
+                "Gruppe", name, [],
+                find=lambda: self._find_group(name),
+                create=lambda: self.client.post("/groups", without_none({"name": name, "description": description})),
+            )
+        found = self._find_group(name)
         if found is None:
-            self.session.report.problem("Gruppe", name, "nicht gefunden – bitte vom Administrator anlegen lassen.")
+            self.session.report.problem("Gruppe", name, "nicht gefunden – selbst anlegen mit create=True "
+                                                        "oder vom Administrator anlegen lassen.")
             return Record("Gruppe", name, state=FAILED)
-        self.session.report.record("vorhanden", "Gruppe", name)
+        self.session.report.record(EXISTING, "Gruppe", name)
         return Record("Gruppe", name, found["id"], found)
+
+    def personal_group(self) -> Record:
+        """Deine persönliche Gruppe ("Gruppe von <Name>"). Sie entsteht automatisch mit
+        deinem Konto; ihr Name wird von der API gelesen statt erraten – er ändert sich,
+        wenn du oder die Gruppe umbenannt werdet."""
+        me = self.session.get("/user") or {}
+        if PERSONAL_GROUP_FIELD not in me:
+            return self._personal_group_problem("der Server liefert sie nicht – er ist älter als dieses Skript. "
+                                                "Bitte die Hausverwaltung auf dem Server aktualisieren.")
+        group = me[PERSONAL_GROUP_FIELD]
+        if not group:
+            return self._personal_group_problem("nicht vorhanden – sie wurde gelöscht.")
+        self.session.report.record(EXISTING, "Gruppe", group["name"])
+        return Record("Gruppe", group["name"], group["id"], group)
+
+    def _personal_group_problem(self, message: str) -> Record:
+        self.session.report.problem("Gruppe", PERSONAL_GROUP_LABEL, message)
+        return Record("Gruppe", PERSONAL_GROUP_LABEL, state=FAILED)
+
+    def _find_group(self, name: str) -> dict | None:
+        return next((g for g in self.session.get("/groups") or [] if g.get("name") == name), None)
 
     def group_landlord(self, group: Record, **fields) -> bool:
         """Vermieter der Gruppe (erscheint z. B. in der Betriebskostenabrechnung)."""

@@ -97,12 +97,27 @@ paths:
     get:
       tags: [Authentifizierung]
       summary: Angemeldeten Benutzer anzeigen
+      description: >-
+        Enthält zusätzlich die persönliche Gruppe ("Gruppe von <Name>"), die beim Anlegen des
+        Benutzers automatisch entsteht. Clients sollten sich auf deren id bzw. name beziehen, statt
+        den Namen zu erraten – er ändert sich z. B., wenn Benutzer oder Gruppe umbenannt werden.
       responses:
         '200':
           description: Benutzer
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/User' }
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/User'
+                  - type: object
+                    properties:
+                      personal_group:
+                        type: object
+                        nullable: true
+                        description: null, falls die persönliche Gruppe gelöscht wurde
+                        properties:
+                          id: { type: integer }
+                          name: { type: string, example: Gruppe von Anna Beispiel }
         '401': { $ref: '#/components/responses/Unauthenticated' }
 
   /tenants:
@@ -682,14 +697,21 @@ paths:
     get:
       tags: [Backup]
       summary: Eigenes Backup als ZIP herunterladen
-      description: Enthält backup.json (Format "hausverwaltung-backup", Version 2) und alle angehängten Dateien unter files/.
+      description: >-
+        Alle sichtbaren Daten – jede Gruppe, in der der Benutzer Mitglied ist (gleich mit welcher Rolle),
+        samt Verwaltungsstruktur. Enthält backup.json (Format "hausverwaltung-backup", Version 2) und alle
+        angehängten Dateien unter files/.
       responses:
         '200': { $ref: '#/components/responses/Zip' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
     post:
       tags: [Backup]
       summary: Backup-ZIP importieren (Restore)
-      description: Ein Gesamt-Backup darf nur der Administrator importieren.
+      description: >-
+        Legt die Gruppen aus dem Backup mit allen Daten neu an; der Importierende ist Besitzer und Admin.
+        Mitglieder und Rollen werden nur für Gruppen wiederhergestellt, in denen er laut Backup Admin war,
+        und nur für bereits vorhandene Konten (übersprungene werden in der Meldung gezählt). Ein
+        Gesamt-Backup darf nur der Administrator importieren; nur dieses legt fehlende Konten an.
       requestBody:
         required: true
         content:

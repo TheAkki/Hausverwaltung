@@ -20,12 +20,19 @@ Erste öffentliche Version unter der GNU General Public License, Version 2 oder 
   Steuerübersicht.
 - **Betriebskostenabrechnung:** als PDF mit frei gestaltbaren Vorlagen, mit Leerständen,
   Nachzahlungen und Erstattungen.
-- **Benutzer und Gruppen:** Benutzergruppen mit Rollen, Backup-Export und -Import.
+- **Benutzer und Gruppen:** Benutzergruppen mit Rollen.
+- **Backup (Web und API):** Der Export enthält alle sichtbaren Daten, also jede Gruppe, in
+  der man Mitglied ist. Der Import spielt alle Daten wieder ein; Mitglieder und Rollen
+  nur für Gruppen, in denen man Admin war, und nur für vorhandene Konten. Konten legt nur
+  das Gesamt-Backup des Administrators an.
 - **Administrator:** Konto für `ADMIN_EMAIL` per `php artisan hv:admin` mit zufälligem
   Startpasswort, `--reset-password` als Notfallzugang. Die Adresse ist für
   Registrierung, Profil und API gesperrt.
 - **REST-API:** mit OpenAPI-Dokumentation (`/api-docs`) und Python-Client für den
-  Datenimport.
+  Datenimport. Gemeinsame Gruppen legt der Anwender dort selbst an
+  (`hv.group(..., create=True)`).
+  `GET /api/user` liefert die persönliche Gruppe mit (`personal_group`), der Client liest
+  sie mit `hv.personal_group()` aus, statt ihren Namen zu erraten.
 - **Oberfläche:** Deutsch und Englisch, Themes.
 - **Docker:** Image mit wählbarer Datenbank (SQLite, MySQL/MariaDB, PostgreSQL),
   veröffentlicht als `ghcr.io/theakki/hausverwaltung` für amd64 und arm64.

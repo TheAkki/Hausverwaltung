@@ -5,7 +5,7 @@
         </h2>
 
         <p class="mt-1 text-sm text-gray-600">
-            {{ __('Exportiere deine Daten (Profileinstellungen, alle von dir verwalteten Gruppen samt Verwaltungsstruktur und alle angehängten Dateien) als ZIP-Datei oder stelle sie aus einer solchen Datei wieder her.') }}
+            {{ __('Exportiere deine Daten (Profileinstellungen, alle Gruppen, in denen du Mitglied bist, samt Verwaltungsstruktur und alle angehängten Dateien) als ZIP-Datei oder stelle sie aus einer solchen Datei wieder her.') }}
         </p>
     </header>
 
@@ -32,7 +32,7 @@
                 <input id="backup" name="backup" type="file" accept=".zip"
                        class="mt-1 block w-full text-sm text-gray-600 border border-gray-300 rounded-md shadow-sm" required>
                 <p class="mt-1 text-xs text-gray-500">
-                    {{ __('Der Import legt die Gruppen aus dem Backup neu an und stellt deren Mitglieder samt Rollen wieder her. Noch nicht vorhandene Benutzer werden ohne Passwort angelegt und müssen beim ersten Login ein neues Passwort vergeben.') }}
+                    {{ __('Der Import legt die Gruppen aus dem Backup neu an, mit dir als Besitzer. Mitglieder samt Rollen werden nur für Gruppen wiederhergestellt, in denen du Admin warst, und nur für Benutzer, die es hier schon gibt.') }}
                 </p>
                 <x-input-error class="mt-2" :messages="$errors->get('backup')" />
             </div>

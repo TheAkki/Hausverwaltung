@@ -187,13 +187,10 @@ class TestDataSeeder extends Seeder
             ]);
         }
 
-        // The UserObserver normally creates this, but seeders may run with model events disabled.
-        $userGroup = $user->groups()->first();
-
-        if ($userGroup === null) {
-            $userGroup = Group::create(['name' => "Gruppe von {$user->name}", 'owner_id' => $user->id]);
-            $userGroup->users()->attach($user->id, ['role' => 'admin']);
-        }
+        // Die persönliche Gruppe entsteht automatisch beim Anlegen des Benutzers
+        // (UserObserver) und wird hier nie selbst angelegt.
+        $userGroup = $user->personalGroup()
+            ?? throw new \RuntimeException("Account \"{$name}\": Die persönliche Gruppe fehlt. Sie entsteht automatisch beim Anlegen des Benutzers.");
 
         // The "Kontosystem" flag lives on the Verwaltungsgruppe. A Kontosystem set directly
         // on the Account applies as the default for every Verwaltungsgruppe under it that

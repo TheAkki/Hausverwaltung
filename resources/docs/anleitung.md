@@ -192,16 +192,16 @@ Attribute in eckigen Klammern (z. B. `[Beschreibung]`) sind optional; ein Sternc
 
 Auf der **Profilseite** findest du den Abschnitt **Backup**. Dort kannst du deine Daten als ZIP-Datei exportieren und später (auch auf einer anderen Installation) wieder importieren.
 
-Der Export enthält:
+Der Export enthält alles, was du sehen kannst:
 
 - deine Profileinstellungen (Name, gewähltes Theme),
-- alle Benutzergruppen, in denen du **Administrator** bist – samt Mitgliederliste und Rollen,
+- alle Benutzergruppen, in denen du **Mitglied** bist (gleich mit welcher Rolle) – samt Mitgliederliste und Rollen,
 - die komplette Verwaltungsstruktur dieser Gruppen (Verwaltungsgruppen, Verwaltungseinheiten, Mieteinheiten, Mietverträge mit Mietern und Mietzahlungen, Rechnungssteller, Rechnungen, Kostenzeilen, Konten, Wartungsverträge, Abrechnungsintervalle),
 - alle angehängten Dateien (Rechnungs-PDFs, Mietvertragsdokumente) im Ordner `files/` des Archivs.
 
-**Passwörter sind bewusst nicht enthalten.** Beim Import werden die Gruppen aus dem Backup neu angelegt und alle Mitglieder mit ihren damaligen Rollen wieder eingetragen. Benutzer, die auf dem Zielsystem noch nicht existieren, werden dabei automatisch angelegt – ohne Passwort und mit Passwortzwang beim ersten Login (wie beim Admin-Account).
+**Passwörter sind bewusst nicht enthalten.** Beim Import werden die Gruppen aus dem Backup mit allen Daten neu angelegt; du bist Besitzer und Administrator der neuen Gruppen. Die Mitglieder samt Rollen werden nur für Gruppen wieder eingetragen, in denen du **Administrator** warst – und nur für Benutzer, die es auf dem Zielsystem schon gibt. Fehlende Benutzer werden übersprungen und in der Meldung nach dem Import gezählt; Konten legt nur das Gesamt-Backup des Admin-Accounts an.
 
-Der **Admin-Account** kann zusätzlich über **„Alle Einstellungen exportieren“** ein Gesamt-Backup aller Benutzer, Gruppen, Themes, Abrechnungsvorlagen und Kostenkategorien erstellen. Ein solches Gesamt-Backup kann auch nur vom Admin-Account importiert werden; dabei werden die Berechtigungen (Gruppenmitgliedschaften und Rollen) aller Benutzer wiederhergestellt.
+Der **Admin-Account** kann zusätzlich über **„Alle Einstellungen exportieren“** ein Gesamt-Backup aller Benutzer, Gruppen, Themes, Abrechnungsvorlagen und Kostenkategorien erstellen. Ein solches Gesamt-Backup kann auch nur vom Admin-Account importiert werden; dabei werden die Berechtigungen (Gruppenmitgliedschaften und Rollen) aller Benutzer wiederhergestellt. Fehlende Benutzer werden dabei ohne Passwort und mit Passwortzwang beim ersten Login angelegt.
 
 **Hinweis:** Der Import legt die enthaltenen Gruppen immer **neu** an, statt bestehende Gruppen zu überschreiben – ein versehentlicher Doppel-Import erzeugt also Duplikate, löscht aber niemals vorhandene Daten.
 

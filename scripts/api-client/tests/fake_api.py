@@ -8,6 +8,8 @@ from urllib.parse import parse_qs, urlsplit
 from hvapi.client import ApiError
 
 PAGE_SIZE = 2
+# Angemeldeter Benutzer, solange sich kein Test anders anmeldet (Konto aus beispiel/).
+DEFAULT_USER_EMAIL = "anna.beispiel@example.com"
 GLOBAL_CATEGORIES = ("Wasserversorgung", "Entwässerung", "Zinsen", "Tilgung")
 
 
@@ -20,6 +22,9 @@ class FakeApi:
         for name in GLOBAL_CATEGORIES:
             self._add("cost-categories", {"name": name, "user_group_id": None})
         self.rent_unmatched = set()
+        self.current_email = DEFAULT_USER_EMAIL
+        # False bildet einen Server nach, der GET /user noch ohne persönliche Gruppe liefert.
+        self.personal_group_supported = True
 
     # --- Hilfen -----------------------------------------------------------
 
@@ -62,6 +67,7 @@ class FakeApi:
     def _routes(self, method):
         return {
             "GET": [
+                (r"/user", self.current_user),
                 (r"/users", self.list_users), (r"/users/(\d+)", self.show_user), (r"/groups", self.list_groups),
                 (r"/groups/(\d+)", self.show_group), (r"/tenants", self.paged("tenants")),
                 (r"/invoice-issuers", self.paged("invoice-issuers")), (r"/cost-categories", self.plain("cost-categories")),
@@ -110,7 +116,17 @@ class FakeApi:
         return lambda body, query, files: self._add(kind, {**defaults, **body})
 
     def login(self, body, query, files):
+        self.current_email = body["email"]
         return {"token": f"token-{body['email']}"}
+
+    def current_user(self, body, query, files):
+        """GET /user: angemeldeter Benutzer samt persönlicher Gruppe (erste eigene Gruppe)."""
+        user = next(u for u in self.data["users"] if u["email"] == self.current_email)
+        if not self.personal_group_supported:
+            return dict(user)
+        own = [g for g in self.data["groups"] if g["owner_id"] == user["id"]]
+        personal = min(own, key=lambda g: g["id"]) if own else None
+        return {**user, "personal_group": {"id": personal["id"], "name": personal["name"]} if personal else None}
 
     # --- Benutzer und Gruppen -------------------------------------------------
 
@@ -135,8 +151,10 @@ class FakeApi:
         return self._get("groups", group_id)
 
     def create_group(self, body, query, files):
-        return self._add("groups", {"name": body["name"], "owner_id": body["owner_id"],
-                                    "users": [{"id": body["owner_id"], "pivot": {"role": "admin"}}]})
+        # Ohne owner_id legt der angemeldete Benutzer die Gruppe für sich selbst an.
+        owner = body.get("owner_id")
+        return self._add("groups", {"name": body["name"], "owner_id": owner, "description": body.get("description"),
+                                    "users": [{"id": owner, "pivot": {"role": "admin"}}]})
 
     def add_member(self, group_id, body, query, files):
         user = next(u for u in self.data["users"] if u["email"] == body["email"])

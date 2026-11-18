@@ -89,17 +89,108 @@ class SingleCallsTest(unittest.TestCase):
         self.lines = []
         self.session = session(self.api, lines=self.lines)
         self.hv = Hausverwaltung(self.session, EXAMPLE_DIR)
-        self.group = self.hv.group("Gruppe von Anna Beispiel")
+        self.group = self.hv.personal_group()
         self.mg = self.hv.management_group(self.group, "Haus")
+        self.groups_before = self.created_groups()
 
     def issuer(self):
         return self.hv.invoice_issuer(self.group, name="Bank", postal_code="1", city="O")
+
+    # KI-generiert
+    def created_groups(self):
+        """Anzahl der POST /groups-Aufrufe (ohne Mitglieder-Endpunkte)."""
+        return sum(1 for method, path, _ in self.api.calls if method == "POST" and path == "/groups")
 
     def test_an_unknown_group_is_a_problem_for_the_administrator(self):
         group = self.hv.group("Gibt es nicht")
 
         self.assertEqual(FAILED, group.state)
         self.assertIn("Administrator", self.session.report.problems[0].message)
+        self.assertIn("create=True", self.session.report.problems[0].message)
+        self.assertEqual(self.groups_before, self.created_groups())
+
+    # KI-generiert
+    def test_a_user_can_create_an_own_group_once(self):
+        created_before = self.session.report.counts[CREATED]
+
+        group = self.hv.group("Eigene GbR", create=True, description="Gemeinsame Vermietung")
+        again = self.hv.group("Eigene GbR", create=True)
+
+        self.assertTrue(group.ready)
+        self.assertEqual(group.id, again.id)
+        self.assertEqual(self.groups_before + 1, self.created_groups())
+        body = [c[2] for c in self.api.calls if c[0] == "POST" and c[1] == "/groups"][-1]
+        self.assertEqual({"name": "Eigene GbR", "description": "Gemeinsame Vermietung"}, body)
+        self.assertEqual(created_before + 1, self.session.report.counts[CREATED])
+
+    # KI-generiert
+    def test_the_personal_group_is_read_from_the_api(self):
+        self.assertEqual("Gruppe von Anna Beispiel", self.group.label)
+        self.assertTrue(self.group.ready)
+        self.assertEqual(self.group.id, self.hv.group("Gruppe von Anna Beispiel").id)
+
+    # KI-generiert
+    def test_a_renamed_personal_group_keeps_working(self):
+        self.api._get("groups", self.group.id)["name"] = "Annas Häuser"
+
+        group = self.hv.personal_group()
+
+        self.assertEqual(("Annas Häuser", self.group.id), (group.label, group.id))
+
+    # KI-generiert
+    def test_a_missing_personal_group_is_a_problem(self):
+        owner = self.api._get("groups", self.group.id)["owner_id"]
+        self.api.data["groups"] = [g for g in self.api.data["groups"] if g["owner_id"] != owner]
+
+        group = self.hv.personal_group()
+
+        self.assertEqual(FAILED, group.state)
+        self.assertIn("persönliche Gruppe", str(self.session.report.problems[-1]))
+
+    # KI-generiert
+    def test_an_outdated_server_is_reported_instead_of_a_deleted_group(self):
+        self.api.personal_group_supported = False
+
+        group = self.hv.personal_group()
+
+        self.assertEqual(FAILED, group.state)
+        message = str(self.session.report.problems[-1])
+        self.assertIn("aktualisieren", message)
+        self.assertNotIn("gelöscht", message)
+
+    # KI-generiert
+    def test_after_login_the_personal_group_of_that_user_is_returned(self):
+        logged_in = self.session.client.login("bert.beispiel@example.com", "egal")
+        other = Hausverwaltung(session(self.api), EXAMPLE_DIR)
+        other.session.client = logged_in
+
+        self.assertEqual("Gruppe von Bert Beispiel", other.personal_group().label)
+
+    # KI-generiert
+    def test_an_existing_group_is_found_with_create(self):
+        group = self.hv.group("Gruppe von Anna Beispiel", create=True)
+
+        self.assertEqual(self.group.id, group.id)
+        self.assertEqual(self.groups_before, self.created_groups())
+
+    # KI-generiert
+    def test_creating_a_group_is_only_planned_in_a_dry_run(self):
+        self.session.dry_run = True
+
+        group = self.hv.group("Eigene GbR", create=True)
+
+        self.assertFalse(group.ready)
+        self.assertEqual(self.groups_before, self.created_groups())
+        self.assertEqual(1, self.session.report.counts[PLANNED])
+
+    # KI-generiert
+    def test_a_rejected_group_creation_is_a_problem(self):
+        self.api.fail("POST", r"/groups")
+
+        group = self.hv.group("Eigene GbR", create=True)
+
+        self.assertEqual(FAILED, group.state)
+        self.assertEqual(["Gruppe"], [problem.kind for problem in self.session.report.problems])
 
     def test_unknown_categories_and_missing_files_are_reported_per_record(self):
         invoice = self.hv.invoice(self.issuer(), self.mg, "2026-01-01", amount=5, allocations=[("Gibt es nicht", None)])

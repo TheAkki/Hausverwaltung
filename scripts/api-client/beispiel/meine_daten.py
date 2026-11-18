@@ -10,7 +10,7 @@ sind relativ zu dieser Datei.
 
 
 def importieren(hv):
-    gruppe = hv.group("Gruppe von Anna Beispiel")
+    gruppe = hv.personal_group()
     hv.group_landlord(gruppe, name="Beispiel", first_name="Anna", street="Lindenweg 2",
                       postal_code="01234", city="Musterstadt", iban="DE02120300000000202051")
 

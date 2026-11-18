@@ -154,25 +154,31 @@ class BackupTest extends TestCase
         $managementGroup = $this->buildStructure($user);
 
         // Ein zweites Gruppenmitglied mit Rolle "user", dessen Berechtigung der
-        // Import wiederherstellen muss.
+        // Import wiederherstellen muss, und ein drittes, das es auf dem Zielsystem
+        // nicht mehr gibt.
         $member = User::factory()->create();
         $user->groups()->first()->users()->attach($member->id, ['role' => 'user']);
+        $gone = User::factory()->create();
+        $user->groups()->first()->users()->attach($gone->id, ['role' => 'user']);
 
         $zipPath = app(BackupService::class)->export($user->fresh());
 
-        // Simuliert die Wiederherstellung auf einem leeren System: Das Mitglied
-        // existiert dort nicht mehr.
-        $memberEmail = $member->email;
-        $member->groups()->detach();
-        $member->delete();
+        // KI-generiert: Ein Benutzer-Import legt keine Konten an (sonst könnte eine
+        // präparierte Datei Konten mit leerem Passwort erzeugen) – das fehlende
+        // Mitglied wird übersprungen und in der Zusammenfassung genannt.
+        $goneEmail = $gone->email;
+        $gone->groups()->detach();
+        $gone->delete();
 
         $groupsBefore = Group::count();
 
         $summary = app(BackupService::class)->import($user->fresh(), $zipPath);
         unlink($zipPath);
 
-        $this->assertStringContainsString('1', $summary);
-        $this->assertSame($groupsBefore + 2, Group::count()); // importierte Gruppe + persönliche Gruppe des neu angelegten Mitglieds
+        $this->assertStringContainsString('1 Gruppe(n) importiert.', $summary);
+        $this->assertStringContainsString('1 Mitglied(er) ohne Konto', $summary);
+        $this->assertSame($groupsBefore + 1, Group::count());
+        $this->assertNull(User::where('email', $goneEmail)->first());
 
         $imported = ManagementGroup::where('description', 'Backup MG')
             ->where('id', '!=', $managementGroup->id)
@@ -220,17 +226,14 @@ class BackupTest extends TestCase
         $this->assertSame('Heizungswartung', $imported->maintenanceContracts()->first()->name);
         $this->assertSame('area', $imported->costCategories()->first()->pivot->allocation_key);
 
-        // Berechtigungen: das gelöschte Mitglied wurde neu angelegt (ohne Passwort,
-        // mit Passwortzwang wie beim Admin-Bootstrap) und hat seine Rolle zurück.
-        $recreated = User::where('email', $memberEmail)->first();
-        $this->assertNotNull($recreated);
-        $this->assertTrue($recreated->must_change_password);
-        $importedGroup = Group::where('id', '!=', $user->groups()->first()->id)
-            ->whereHas('users', fn ($q) => $q->where('users.id', $recreated->id))
-            ->first();
+        // Berechtigungen: das vorhandene Mitglied hat seine Rolle in der neu
+        // angelegten Gruppe zurück, der Importierende ist Admin und Besitzer.
+        $originalGroup = $user->groups()->first();
+        $importedGroup = Group::where('name', $originalGroup->name)->where('id', '!=', $originalGroup->id)->first();
         $this->assertNotNull($importedGroup);
-        $this->assertSame('user', $importedGroup->users()->where('users.id', $recreated->id)->first()->pivot->role);
+        $this->assertSame('user', $importedGroup->users()->where('users.id', $member->id)->first()->pivot->role);
         $this->assertSame('admin', $importedGroup->users()->where('users.id', $user->id)->first()->pivot->role);
+        $this->assertSame($user->id, $importedGroup->owner_id);
     }
 
     /**

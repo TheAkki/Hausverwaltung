@@ -35,10 +35,18 @@ use ZipArchive;
 
 /**
  * Implements the Backup-Konzept: every user can export/import their own data
- * (profile settings, all groups they administer including the whole management
- * structure below, and all attached files) as a ZIP archive; the Administrator
- * account can export/import ALL settings, with group permissions (memberships
- * and roles) being restored on import.
+ * as a ZIP archive; the Administrator account can export/import ALL settings,
+ * with group permissions (memberships and roles) being restored on import.
+ *
+ * Benutzer-Backup (Konzept.md "## API"): Der Export enthält alle SICHTBAREN Daten,
+ * also jede Gruppe, in der der Benutzer Mitglied ist – gleich mit welcher Rolle –
+ * samt Verwaltungsstruktur und Dateien. Der Import spielt alle SCHREIBBAREN Daten
+ * wieder ein (Mitglieder dürfen in ihren Gruppen arbeiten). Mitgliedschaften und
+ * Rollen stellt er nur für Gruppen wieder her, in denen der Importierende laut
+ * Backup Admin war, und dann nur für bereits vorhandene Konten. Ein Benutzer-Import
+ * kann damit nichts, was der Benutzer nicht auch in der Oberfläche könnte: Er legt
+ * keine Konten an und macht niemand anderen zum Besitzer einer Gruppe. Neue Konten
+ * entstehen nur beim Gesamt-Import durch den Administrator.
  *
  * The ZIP contains a `backup.json` with the structured data plus a `files/`
  * directory holding the attached documents (invoice PDFs, lease documents,
@@ -66,6 +74,16 @@ class BackupService
     private const TEMPLATE_FIELDS = ['name', 'content', 'css_content', 'header', 'footer', 'is_default'];
 
     private const BILLING_TEMPLATE_DIRECTORY = 'billing-templates';
+
+    private const ROLE_ADMIN = 'admin';
+
+    private const ROLE_USER = 'user';
+
+    /** @var list<string> */
+    private const ROLES = [self::ROLE_ADMIN, self::ROLE_USER];
+
+    /** Mitglieder ohne Konto, die ein Benutzer-Import übersprungen hat. */
+    private int $skippedMembers = 0;
 
     /** @var array<int|string, int> */
     private array $leaseMap = [];
@@ -108,10 +126,12 @@ class BackupService
     /**
      * Exports the given user's own data (type "user") as a ZIP file and returns
      * its absolute path (a temp file the caller should download and delete).
+     * Enthalten ist jede Gruppe, in der der Benutzer Mitglied ist (alles, was er
+     * sehen kann).
      */
     public function export(User $user): string
     {
-        $groups = $user->groups()->wherePivot('role', 'admin')->get();
+        $groups = $user->groups()->orderBy('groups.id')->get();
 
         $data = [
             'format' => self::FORMAT,
@@ -273,11 +293,22 @@ class BackupService
         $groupCount = 0;
 
         foreach ($data['groups'] ?? [] as $groupData) {
-            $this->importGroup($user, $groupData);
+            $this->importGroup($user, $groupData, $isFull);
             $groupCount++;
         }
 
-        return __(':groups Gruppe(n) importiert.', ['groups' => $groupCount]);
+        return $this->summary($groupCount);
+    }
+
+    private function summary(int $groupCount): string
+    {
+        $summary = __(':groups Gruppe(n) importiert.', ['groups' => $groupCount]);
+
+        if ($this->skippedMembers > 0) {
+            $summary .= ' '.__(':members Mitglied(er) ohne Konto auf diesem System übersprungen.', ['members' => $this->skippedMembers]);
+        }
+
+        return $summary;
     }
 
     /**
@@ -557,9 +588,11 @@ class BackupService
     /**
      * @param  array<string, mixed>  $groupData
      */
-    private function importGroup(User $importer, array $groupData): void
+    private function importGroup(User $importer, array $groupData, bool $isFull): void
     {
-        $owner = isset($groupData['owner_email'])
+        // Beim Benutzer-Import gehört die neu angelegte Gruppe immer dem
+        // Importierenden – wie bei einer Gruppe, die er in der Oberfläche anlegt.
+        $owner = $isFull && isset($groupData['owner_email'])
             ? $this->findOrCreateUser($groupData['owner_email'], $groupData['owner_email'])
             : $importer;
 
@@ -569,19 +602,15 @@ class BackupService
             'owner_id' => $owner->id,
         ]);
 
-        // Berechtigungen wiederherstellen: alle Mitglieder mit ihrer damaligen
-        // Rolle wieder anhängen; fehlende Accounts werden (ohne Passwort, mit
-        // Passwortzwang) neu angelegt.
-        foreach ($groupData['members'] ?? [] as $member) {
-            $memberUser = $this->findOrCreateUser($member['email'], $member['name'] ?? $member['email']);
-            $group->users()->syncWithoutDetaching([$memberUser->id => ['role' => $member['role'] ?? 'user']]);
+        if ($isFull || $this->wasGroupAdmin($importer, $groupData)) {
+            $this->restoreMemberships($group, $groupData['members'] ?? [], $isFull);
         }
 
-        if (! $group->users()->where('users.id', $importer->id)->exists() && ! $importer->isAdministrator()) {
-            // Beim Selbst-Import muss der Importierende seine eigene Gruppe auch
-            // wieder verwalten können, selbst wenn die Mitgliederliste ihn (z. B.
-            // nach einer E-Mail-Änderung) nicht mehr enthält.
-            $group->users()->attach($importer->id, ['role' => 'admin']);
+        if (! $isFull && ! $group->users()->where('users.id', $importer->id)->exists()) {
+            // Beim Selbst-Import muss der Importierende seine Gruppe auch wieder
+            // verwalten können – auch wenn er im Backup nur Mitglied war oder die
+            // Mitgliederliste ihn (z. B. nach einer E-Mail-Änderung) nicht enthält.
+            $group->users()->attach($importer->id, ['role' => self::ROLE_ADMIN]);
         }
 
         foreach ($groupData['tenants'] ?? [] as $tenantData) {
@@ -633,6 +662,53 @@ class BackupService
 
         foreach ($groupData['management_groups'] ?? [] as $managementGroupData) {
             $this->importManagementGroup($group, $managementGroupData);
+        }
+    }
+
+    /**
+     * Ob der Importierende laut Backup Admin dieser Gruppe war.
+     *
+     * @param  array<string, mixed>  $groupData
+     */
+    private function wasGroupAdmin(User $importer, array $groupData): bool
+    {
+        foreach ($groupData['members'] ?? [] as $member) {
+            if (strtolower((string) ($member['email'] ?? '')) === $importer->email) {
+                return ($member['role'] ?? null) === self::ROLE_ADMIN;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Mitglieder mit ihrer damaligen Rolle wieder eintragen. Fehlende Konten legt
+     * nur der Gesamt-Import des Administrators an (ohne Passwort, mit
+     * Passwortzwang); ein Benutzer-Import überspringt sie.
+     *
+     * @param  array<int, array<string, mixed>>  $members
+     */
+    private function restoreMemberships(Group $group, array $members, bool $isFull): void
+    {
+        foreach ($members as $member) {
+            $email = strtolower(trim((string) ($member['email'] ?? '')));
+
+            if ($email === '') {
+                continue;
+            }
+
+            $memberUser = $isFull
+                ? $this->findOrCreateUser($email, $member['name'] ?? $email)
+                : User::where('email', $email)->first();
+
+            if ($memberUser === null) {
+                $this->skippedMembers++;
+
+                continue;
+            }
+
+            $role = in_array($member['role'] ?? null, self::ROLES, true) ? $member['role'] : self::ROLE_USER;
+            $group->users()->syncWithoutDetaching([$memberUser->id => ['role' => $role]]);
         }
     }
 
@@ -1125,5 +1201,6 @@ class BackupService
         $this->invoiceMap = [];
         $this->leaseMap = [];
         $this->pendingCouplings = [];
+        $this->skippedMembers = 0;
     }
 }

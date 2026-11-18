@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\BillingIntervalController;
 use App\Http\Controllers\Api\BillingTemplateController;
 use App\Http\Controllers\Api\CostCategoryController;
 use App\Http\Controllers\Api\CostController;
+use App\Http\Controllers\Api\CurrentUserController;
 use App\Http\Controllers\Api\GroupController;
 use App\Http\Controllers\Api\GroupMembershipController;
 use App\Http\Controllers\Api\InvoiceBookingController;
@@ -28,7 +29,6 @@ use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\SettlementClaimController;
 use App\Http\Controllers\Api\TenantController;
 use App\Http\Controllers\Api\UserController;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -43,7 +43,7 @@ Route::name('api.')->group(function () {
 
     Route::middleware('auth:sanctum')->group(function () {
         Route::post('/logout', [AuthTokenController::class, 'destroy'])->name('logout');
-        Route::get('/user', fn (Request $request) => $request->user())->name('user');
+        Route::get('/user', CurrentUserController::class)->name('user');
 
         Route::apiResource('tenants', TenantController::class);
         Route::apiResource('leases', LeaseController::class);

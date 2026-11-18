@@ -70,7 +70,7 @@ Die Feldnamen sind dieselben wie in der API-Dokumentation (`/api-docs` im Web).
 
 ```python
 def importieren(hv):
-    gruppe = hv.group("Gruppe von Anna Beispiel")
+    gruppe = hv.personal_group()
     meier = hv.tenant(gruppe, first_name="Maria", last_name="Meier", street="Musterstraße 1",
                       postal_code="01234", city="Musterstadt")
     stadtwerke = hv.invoice_issuer(gruppe, name="Stadtwerke Musterstadt", postal_code="01234", city="Musterstadt")
@@ -93,7 +93,8 @@ def importieren(hv):
 
 | Aufruf | Bedeutung | Wiedererkannt an |
 |---|---|---|
-| `group(name)` | eigene Gruppe (legt der Administrator an) | Name |
+| `personal_group()` | deine persönliche Gruppe („Gruppe von <Name>“); ihr Name wird von der API gelesen, nicht erraten | – |
+| `group(name, create=False)` | Gruppe, in der du Mitglied bist; mit `create=True` legst du sie selbst an, falls es sie noch nicht gibt | Name |
 | `group_landlord(gruppe, …)` | Vermieter der Gruppe | – |
 | `tenant(gruppe, …)` | Mieter | Name und Anschrift |
 | `invoice_issuer(gruppe, …)` | Rechnungssteller | Name, PLZ, Ort |
@@ -156,9 +157,15 @@ Monatswechsel zählt für den Folgemonat. Maßgeblich ist der Tag des Mietbeginn
 
 ### Gemeinsame Gruppen
 
-- Lege die Verwaltungsgruppe zuerst in deiner eigenen Gruppe an und importiere alles.
-- Verschiebe sie danach mit `move_management_group` in die gemeinsame Gruppe. Eigene
-  Kategorien bleiben dabei nutzbar.
+- **Anlegen:** Eine gemeinsame Gruppe legst du selbst an, mit
+  `hv.group("Muster GbR", create=True)`. Du bist dann Besitzer und Admin. Ohne
+  `create=True` muss die Gruppe schon existieren, z. B. vom Administrator
+  eingerichtet. So erzeugt ein Tippfehler im Namen keine neue Gruppe.
+- **Mitglieder:** Weitere Mitglieder trägt der Administrator ein (`admin.group(...)`)
+  oder du selbst im Web unter **Gruppen**.
+- **Reihenfolge:** Lege die Verwaltungsgruppe zuerst in deiner eigenen Gruppe an und
+  importiere alles. Verschiebe sie danach mit `move_management_group` in die
+  gemeinsame Gruppe. Eigene Kategorien bleiben dabei nutzbar.
 
 ## Für den Administrator
 
