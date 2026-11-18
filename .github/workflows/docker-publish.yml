@@ -53,17 +53,17 @@ jobs:
           platform='${{ matrix.platform }}'
           echo "PLATFORM_PAIR=${platform//\//-}" >> "$GITHUB_ENV"
 
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Metadaten (Labels)
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -71,7 +71,7 @@ jobs:
 
       - name: Bauen und nach Digest hochladen
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: ${{ matrix.platform }}
@@ -90,7 +90,7 @@ jobs:
           digest='${{ steps.build.outputs.digest }}'
           touch "$DIGEST_DIR/${digest#sha256:}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ env.DIGEST_ARTIFACT_PREFIX }}${{ env.PLATFORM_PAIR }}
           path: ${{ env.DIGEST_DIR }}/*
@@ -108,17 +108,17 @@ jobs:
       - name: Namen vorbereiten
         run: echo "IMAGE=${REGISTRY}/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: ${{ env.DIGEST_DIR }}
           pattern: ${{ env.DIGEST_ARTIFACT_PREFIX }}*
           merge-multiple: true
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
       - name: Metadaten (Tags)
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.IMAGE }}
           tags: |
@@ -129,7 +129,7 @@ jobs:
           flavor: |
             latest=auto
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
