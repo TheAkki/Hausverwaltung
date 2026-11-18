@@ -13,6 +13,8 @@ env:
   PHP_VERSION: "8.3"
   NODE_VERSION: "22"
   PHP_EXTENSIONS: bcmath, gd, intl, mbstring, pdo_sqlite, zip
+  # Für die Quellcode-Dokumentation (php artisan docs:api, Doxyfile mit HAVE_DOT)
+  DOC_PACKAGES: doxygen graphviz
 
 jobs:
   php-js:
@@ -31,6 +33,11 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
+
+      - name: Doxygen und Graphviz (für docs:api)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ${{ env.DOC_PACKAGES }}
 
       - name: PHP-Abhängigkeiten
         run: composer install --no-interaction --no-progress --prefer-dist

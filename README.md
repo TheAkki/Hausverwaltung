@@ -71,6 +71,8 @@ Datenbankvarianten und Hinweise zu Sicherung und Sicherheit stehen in
 - [Composer](https://getcomposer.org) 2
 - Node.js 22 (mindestens 20.19) mit npm
 - Datenbank: SQLite (Standard), MySQL/MariaDB oder PostgreSQL
+- Optional für die Quellcode-Dokumentation (`php artisan docs:api`): Doxygen und
+  Graphviz. Ohne sie überspringen die Tests den betreffenden Fall.
 
 ### Einrichten
 

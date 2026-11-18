@@ -37,6 +37,13 @@ class GenerateApiDocumentationTest extends TestCase
 
     public function test_it_generates_the_doxygen_documentation_successfully(): void
     {
+        // KI-generiert: Doxygen ist ein optionales Werkzeug der Entwicklung. Ohne es
+        // lässt sich der Erfolgsfall nicht prüfen; der Fehlerfall ist oben abgedeckt.
+        // In der CI installiert .github/workflows/tests.yml Doxygen, dort läuft er immer.
+        if (! shell_exec('command -v doxygen')) {
+            $this->markTestSkipped('doxygen ist nicht installiert.');
+        }
+
         $indexPath = public_path('docs/api/html/index.html');
 
         File::deleteDirectory(public_path('docs/api'));
