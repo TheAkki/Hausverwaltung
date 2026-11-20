@@ -39,6 +39,13 @@ Erste öffentliche Version unter der GNU General Public License, Version 2 oder 
   öffentlich unter `/storage`, sondern werden nur an Berechtigte ausgeliefert; vorhandene
   Dateien zieht die Migration um.
 - **Bedienungsanleitung** mit Screenshots aus Beispieldaten (`php artisan docs:screenshots`).
+- **Schneller auf schwacher Hardware:** SQLite läuft im WAL-Modus mit
+  `synchronous=normal` (einstellbar über `DB_JOURNAL_MODE`, `DB_SYNCHRONOUS`,
+  `DB_BUSY_TIMEOUT`). Jede ändernde Anfrage wird in einer Transaktion gespeichert;
+  scheitert sie, bleibt nichts halb gespeichert. Die Übersichten von Verwaltungsgruppe,
+  Verwaltungseinheit, Steuer und nicht zugeordneten Buchungen brauchen nur noch einen
+  Bruchteil der Datenbankabfragen und schreiben beim Anzeigen nichts mehr. Der
+  Python-Client fragt bereits geladene Listen nicht erneut ab.
 - **Backup (Web und API):** Der Export enthält alle sichtbaren Daten, also jede Gruppe, in
   der man Mitglied ist. Der Import spielt alle Daten wieder ein; Mitglieder und Rollen
   nur für Gruppen, in denen man Admin war, und nur für vorhandene Konten. Konten legt nur

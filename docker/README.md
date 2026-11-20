@@ -134,6 +134,16 @@ in [.env.docker.example](../.env.docker.example).
   den Server und führt dann die Migrationen aus.
 - **Wechsel:** Ein Wechsel der Datenbank überträgt keine Daten. Dafür im alten System
   ein Backup exportieren und im neuen importieren.
+- **SQLite-Schreibmodus:** Standard ist `DB_JOURNAL_MODE=wal` mit
+  `DB_SYNCHRONOUS=normal`. SQLite schreibt dann nicht nach jeder Änderung synchron auf
+  den Datenträger – das macht vor allem auf Mini-PCs mit eMMC- oder SD-Speicher einen
+  großen Unterschied. Bei einem Stromausfall können die letzten Sekunden an Änderungen
+  fehlen, die Datenbank bleibt aber intakt. Wer das nicht möchte, setzt
+  `DB_SYNCHRONOUS=full`. Liegt die Datei auf einem Netzlaufwerk (NFS, SMB), muss
+  `DB_JOURNAL_MODE=delete` gesetzt werden. Neben `database.sqlite` liegen im WAL-Modus
+  zeitweise `database.sqlite-wal` und `database.sqlite-shm`; sie gehören zur Datenbank.
+- **Transaktionen:** Jede ändernde Anfrage wird als Ganzes gespeichert. Scheitert sie,
+  bleibt nichts halb gespeichert.
 
 ## Was beim Start passiert
 
@@ -158,7 +168,8 @@ in [.env.docker.example](../.env.docker.example).
 | `postgres-data` | Daten des PostgreSQL-Containers |
 
 Sichere das `storage`-Volume und die Datenbank regelmäßig, oder nutze den
-Backup-Export der Anwendung. Ohne das `storage`-Volume (und damit ohne Schlüssel)
+Backup-Export der Anwendung. Eine SQLite-Datei bei laufendem Container nur zusammen mit
+`database.sqlite-wal` kopieren, oder den Container vorher anhalten. Ohne das `storage`-Volume (und damit ohne Schlüssel)
 lassen sich verschlüsselte Daten nicht mehr lesen.
 
 ## Sicherheit

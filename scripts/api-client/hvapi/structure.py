@@ -86,7 +86,7 @@ class Structure(Base):
         return self.session.ensure(
             "Verwaltungseinheit", f"{street}, {city}", [management_group],
             find=lambda: self.first_match(self.session.cached("/management-units"), key),
-            create=lambda: self._created("/management-units", {**key, "description": description}),
+            create=lambda: self._appended("/management-units", {**key, "description": description}),
             context={"costable_type": "management_unit", "management_group": management_group},
         )
 
@@ -96,7 +96,7 @@ class Structure(Base):
         return self.session.ensure(
             "Mieteinheit", f"{management_unit.label}: {type} {description or ''}".strip(), [management_unit],
             find=lambda: self.first_match(self.session.cached("/rental-units"), key),
-            create=lambda: self._created("/rental-units", {**fields, **key}),
+            create=lambda: self._appended("/rental-units", {**fields, **key}),
             context={"costable_type": "rental_unit", "management_group": management_group_of(management_unit)},
         )
 
@@ -109,7 +109,7 @@ class Structure(Base):
         lease = self.session.ensure(
             "Mietvertrag", f"{rental_unit.label} ab {start_date}", [rental_unit, coupled_to, *tenants],
             find=lambda: self._find_lease(rental_unit, start_date),
-            create=lambda: self._created("/leases", self._lease_body(rental_unit, start_date, tenants, coupled_to, fields)),
+            create=lambda: self._appended("/leases", self._lease_body(rental_unit, start_date, tenants, coupled_to, fields)),
             context={"costable_type": "lease", "management_group": management_group_of(rental_unit)},
         )
         if intervals:
@@ -130,7 +130,7 @@ class Structure(Base):
     def _sync_intervals(self, lease: Record, wanted: list) -> str:
         """Fehlende Intervalle anhängen und danach alle auf die gewünschten Werte setzen
         (beim Anhängen kürzt die Anwendung das vorige Intervall)."""
-        existing = {date_only(i["start_date"]): i for i in self.session.get(f"/leases/{lease.id}").get("lease_intervals") or []}
+        existing = {date_only(i["start_date"]): i for i in self._lease_details(lease).get("lease_intervals") or []}
         outcome = EXISTING
         for interval in sorted(wanted, key=lambda item: item["start_date"]):
             if interval["start_date"] not in existing:
@@ -142,6 +142,8 @@ class Structure(Base):
                 values = {field: interval.get(field) for field in LEASE_INTERVAL_FIELDS}
                 self.client.put(f"/lease-intervals/{current['id']}", values)
                 outcome = UPDATED
+        if outcome != EXISTING:
+            self.session.forget(self._lease_path(lease))
         return outcome
 
     def settlement_claim(self, lease: Record, billing_interval: Record, date: str, amount: float,
@@ -151,7 +153,7 @@ class Structure(Base):
         record = self.session.ensure(
             "Forderung", f"{lease.label}: {date}", [lease, billing_interval],
             find=lambda: self._find_claim(lease, billing_interval, date),
-            create=lambda: self.client.post("/settlement-claims", {
+            create=lambda: self._created_in(self._lease_path(lease), "/settlement-claims", {
                 **fields, "lease_id": lease.id, "billing_interval_id": billing_interval.id, "date": date, "amount": amount}),
         )
         if file is not None:
@@ -159,7 +161,7 @@ class Structure(Base):
         return record
 
     def _find_claim(self, lease: Record, billing_interval: Record, date: str) -> dict | None:
-        claims = self.session.get(f"/leases/{lease.id}").get("settlement_claims") or []
+        claims = self._lease_details(lease).get("settlement_claims") or []
         return next((claim for claim in claims
                      if claim.get("billing_interval_id") == billing_interval.id and date_only(claim.get("date")) == date), None)
 
@@ -183,6 +185,16 @@ class Structure(Base):
         return next((t for t in account.get("transfers_out") or []
                      if t.get("to_account_id") == target.id and date_only(t.get("transfer_date")) == transfer_date
                      and same(t.get("amount"), amount)), None)
+
+    @staticmethod
+    def _lease_path(lease: Record) -> str:
+        return f"/leases/{lease.id}"
+
+    def _lease_details(self, lease: Record) -> dict:
+        """Mietvertrag mit Intervallen und Forderungen, einmal geladen bis zur nächsten
+        eigenen Änderung daran."""
+        cached = self.session.cached(self._lease_path(lease))
+        return cached[0] if cached else {}
 
     def _details(self, management_group: Record) -> dict:
         path = f"/management-groups/{management_group.id}"

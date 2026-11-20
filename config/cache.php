@@ -18,6 +18,14 @@ return [
     'default' => env('CACHE_STORE', 'database'),
 
     /*
+    | Speicher der Anmelde- und Aufrufzähler (RateLimiter). Bewusst nicht die
+    | Datenbank: ändernde Anfragen laufen in einer Transaktion
+    | (App\Http\Middleware\TransactionPerRequest), die bei einer Fehlerantwort
+    | zurückgenommen wird – ein fehlgeschlagener Anmeldeversuch muss aber zählen.
+    */
+    'limiter' => env('CACHE_LIMITER_STORE', 'file'),
+
+    /*
     |--------------------------------------------------------------------------
     | Cache Stores
     |--------------------------------------------------------------------------

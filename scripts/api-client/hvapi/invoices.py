@@ -3,9 +3,10 @@
 from .base import Base, costable_ref, management_group_of, without_none
 from .client import ApiError
 from .report import CREATED, EXISTING, UPDATED
-from .session import DataError, Record, describe
+from .session import DataError, Record, date_only, describe
 
 PERIODICITY_ONCE = "once"
+INVOICES = "/invoices"
 
 # Datensätze, die einen Beleg haben können, und ihr API-Pfad (…/{id}/file).
 FILE_ENDPOINTS = {"Rechnung": "/invoices", "Forderung": "/settlement-claims", "Umbuchung": "/account-transfers"}
@@ -31,7 +32,7 @@ class Invoices(Base):
         record = self.session.ensure(
             "Rechnung", label, [issuer, costable, billing_interval, issuer_account],
             find=lambda: self._find_invoice(issuer, costable, invoice_date, amount, segments, fields.get("description")),
-            create=lambda: self.client.post("/invoices", self._invoice_body(
+            create=lambda: self._appended(INVOICES, self._invoice_body(
                 issuer, costable, invoice_date, periodicity, amount, allocations, segments,
                 billing_interval, issuer_account, fields)),
             context={"management_group": management_group, "billing_interval": billing_interval},
@@ -59,12 +60,15 @@ class Invoices(Base):
         invoice.data.update(response)
 
     def _find_invoice(self, issuer: Record, costable: Record, invoice_date: str, amount, segments, description):
+        """Alle Rechnungen eines Rechnungsstellers werden einmal geladen und hier
+        durchsucht – nicht je Rechnung eine eigene Anfrage."""
         nominal = segments[0]["amount"] if segments else amount
-        candidates = self.session.list("/invoices", {
-            "invoice_issuer_id": issuer.id, "costable": costable_ref(costable), "invoice_date": invoice_date,
-            "show_completed": True,
-        })
-        return self.first_match(candidates, {"amount": nominal, "description": description})
+        candidates = self.session.cached(INVOICES, {"invoice_issuer_id": issuer.id, "show_completed": True})
+        return next((candidate for candidate in candidates
+                     if candidate.get("invoice_issuer_id") == issuer.id
+                     and f"{candidate.get('costable_type')}:{candidate.get('costable_id')}" == costable_ref(costable)
+                     and date_only(candidate.get("invoice_date")) == invoice_date
+                     and self.matches(candidate, {"amount": nominal, "description": description})), None)
 
     def _invoice_body(self, issuer, costable, invoice_date, periodicity, amount, allocations, segments,
                       billing_interval, issuer_account, fields) -> dict:

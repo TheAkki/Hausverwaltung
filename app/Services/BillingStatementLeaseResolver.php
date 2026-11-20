@@ -31,11 +31,43 @@ class BillingStatementLeaseResolver
      */
     public function forInterval(ManagementUnit $managementUnit, BillingInterval $billingInterval): Collection
     {
+        return $this->resolve(
+            $managementUnit,
+            fn (Lease $lease, Collection $preContracts, RentalUnit $rentalUnit) => $this->buildEntry($lease, $preContracts, $rentalUnit, $billingInterval, $managementUnit)
+        );
+    }
+
+    /**
+     * Dieselben Mietverträge wie forInterval(), aber nur mit Mietvertrag, Mietern und
+     * Mieteinheit – für Listen wie auf der Seite der Verwaltungseinheit, ohne die
+     * Vorauszahlungen Monat für Monat und die übrigen Mieten zu berechnen.
+     *
+     * @return Collection<int, array{lease: Lease, tenantNames: string, rentalUnit: RentalUnit}>
+     */
+    public function summaryForInterval(ManagementUnit $managementUnit, BillingInterval $billingInterval): Collection
+    {
+        return $this->resolve(
+            $managementUnit,
+            fn (Lease $lease, Collection $preContracts, RentalUnit $rentalUnit) => $this->period($lease, $preContracts, $billingInterval) === null
+                ? null
+                : ['lease' => $lease, 'tenantNames' => $lease->tenantNames(), 'rentalUnit' => $rentalUnit]
+        );
+    }
+
+    /**
+     * Geht die abrechnungsrelevanten Mieteinheiten durch und baut je echtem Mietvertrag
+     * (mit den unmittelbar vorangehenden Vorverträgen) einen Eintrag; null wird ausgelassen.
+     *
+     * @param  callable(Lease, Collection<int, Lease>, RentalUnit): (array<string, mixed>|null)  $entry
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function resolve(ManagementUnit $managementUnit, callable $entry): Collection
+    {
         $managementUnit->loadMissing('rentalUnits.leases.tenants', 'rentalUnits.leases.leaseIntervals');
 
         return $managementUnit->rentalUnits
             ->where('is_relevant_for_billing', true)
-            ->flatMap(function ($rentalUnit) use ($billingInterval, $managementUnit) {
+            ->flatMap(function ($rentalUnit) use ($entry) {
                 $entries = collect();
                 $pendingPreContracts = collect();
 
@@ -46,11 +78,11 @@ class BillingStatementLeaseResolver
                         continue;
                     }
 
-                    $entry = $this->buildEntry($lease, $pendingPreContracts, $rentalUnit, $billingInterval, $managementUnit);
+                    $built = $entry($lease, $pendingPreContracts, $rentalUnit);
                     $pendingPreContracts = collect();
 
-                    if ($entry !== null) {
-                        $entries->push($entry);
+                    if ($built !== null) {
+                        $entries->push($built);
                     }
                 }
 
@@ -71,19 +103,13 @@ class BillingStatementLeaseResolver
     private function buildEntry(Lease $lease, Collection $preContracts, RentalUnit $rentalUnit, BillingInterval $billingInterval, ManagementUnit $managementUnit): ?array
     {
         $absorbedLeases = $preContracts->concat([$lease]);
+        $period = $this->period($lease, $preContracts, $billingInterval);
 
-        // Extend the effective start back over any absorbed Vorverträge (they precede $lease).
-        $effectiveStart = $absorbedLeases
-            ->sortBy(fn (Lease $l) => $l->start_date->timestamp)
-            ->first()->start_date;
-
-        $start = $effectiveStart->copy()->max($billingInterval->start_date);
-        $end = ($lease->end_date ?? $billingInterval->end_date)->min($billingInterval->end_date);
-
-        if ($start->gt($end)) {
+        if ($period === null) {
             return null;
         }
 
+        [$start, $end] = $period;
         $current = $lease->currentLeaseInterval();
         $monthlyUtilityAdvances = $this->monthlyUtilityAdvances($absorbedLeases, $start, $end);
 
@@ -101,6 +127,27 @@ class BillingStatementLeaseResolver
             'totalUtilityAdvance' => $monthlyUtilityAdvances->sum('amount'),
             'otherRents' => $this->otherRents($managementUnit, $lease),
         ];
+    }
+
+    /**
+     * Abgerechneter Zeitraum: vom Beginn des ersten aufgenommenen Vorvertrags (sonst des
+     * Mietvertrags) bis zu seinem Ende, beides auf das Abrechnungsintervall begrenzt.
+     * null, wenn der Mietvertrag das Intervall nicht berührt.
+     *
+     * @param  Collection<int, Lease>  $preContracts
+     * @return array{0: Carbon, 1: Carbon}|null
+     */
+    private function period(Lease $lease, Collection $preContracts, BillingInterval $billingInterval): ?array
+    {
+        // Extend the effective start back over any absorbed Vorverträge (they precede $lease).
+        $effectiveStart = $preContracts->concat([$lease])
+            ->sortBy(fn (Lease $l) => $l->start_date->timestamp)
+            ->first()->start_date;
+
+        $start = $effectiveStart->copy()->max($billingInterval->start_date);
+        $end = ($lease->end_date ?? $billingInterval->end_date)->min($billingInterval->end_date);
+
+        return $start->gt($end) ? null : [$start, $end];
     }
 
     /**

@@ -89,10 +89,9 @@ class ManagementUnitController extends Controller
             default => $overview->incomeMatrix($leases, $year),
         };
 
-        foreach ($leases->flatMap->leaseIntervals as $leaseInterval) {
-            $rentPaymentGenerator->generate($leaseInterval);
-        }
-        $managementUnit->load('rentalUnits.leases.leaseIntervals.rentPayments');
+        // Setzt rentPayments an den Intervallen – loadMissing lädt sie nicht noch einmal.
+        $rentPaymentGenerator->generateMany($leases->flatMap->leaseIntervals);
+        $managementUnit->loadMissing('rentalUnits.leases.leaseIntervals.rentPayments');
         $leases = $managementUnit->rentalUnits->flatMap->leases;
 
         $bookedIncome = match ($incomeView) {
@@ -122,13 +121,14 @@ class ManagementUnitController extends Controller
 
         $billingIntervals = $managementUnit->managementGroup->billingIntervals()->orderBy('start_date', 'desc')->get();
         $billingStatementLeases = $billingIntervals->mapWithKeys(
-            fn ($billingInterval) => [$billingInterval->id => $leaseResolver->forInterval($managementUnit, $billingInterval)]
+            fn ($billingInterval) => [$billingInterval->id => $leaseResolver->summaryForInterval($managementUnit, $billingInterval)]
         );
         // "Übersicht aller Buchungen" (Konzept.md "### Betriebskostenabrechnung"):
         // reuses the same $costs already fetched above for Prognostizierte/Gebuchte
         // Ausgaben, just grouped per Abrechnungsintervall instead of per Jahr.
+        $costsByInterval = $costs->groupBy('billing_interval_id');
         $bookingsByInterval = $billingIntervals->mapWithKeys(
-            fn ($billingInterval) => [$billingInterval->id => $overview->bookingsByCategory($costs, $billingInterval->id)]
+            fn ($billingInterval) => [$billingInterval->id => $overview->bookingsByCategory($costsByInterval->get($billingInterval->id, collect()), $billingInterval->id)]
         );
 
         // "Leerstand" (Konzept.md "##### Leerstände"): dieselben Phantom-Mietvertrags-

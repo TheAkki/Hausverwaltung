@@ -76,6 +76,14 @@ class Session:
     def forget(self, path: str) -> None:
         self._cache = {key: value for key, value in self._cache.items() if not key.startswith(f"{path}?")}
 
+    def remember(self, path: str, item: dict) -> None:
+        """Hängt einen gerade angelegten Datensatz an alle zwischengespeicherten Listen von
+        ``path`` an, statt sie beim nächsten Suchen neu zu laden (jeder Aufruf kostet Zeit).
+        Nur für Listen, deren Suche ausschließlich Felder des Datensatzes selbst prüft."""
+        for key, items in self._cache.items():
+            if key.startswith(f"{path}?"):
+                items.append(item)
+
     # --- Schreiben ------------------------------------------------------------
 
     def ensure(self, kind: str, label: str, parents, find, create, context: dict | None = None) -> Record:

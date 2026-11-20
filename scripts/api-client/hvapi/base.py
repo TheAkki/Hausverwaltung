@@ -29,6 +29,13 @@ class Base:
         self.session.forget(path)
         return self.client.post(path, body)
 
+    def _appended(self, path: str, body: dict) -> dict:
+        """Legt einen Datensatz an und ergänzt ihn in der zwischengespeicherten Liste –
+        für Listen, die nur nach Feldern des Datensatzes selbst durchsucht werden."""
+        created = self.client.post(path, body)
+        self.session.remember(path, created)
+        return created
+
     @staticmethod
     def matches(candidate: dict, expected: dict) -> bool:
         return all(same(candidate.get(field), value) for field, value in expected.items())

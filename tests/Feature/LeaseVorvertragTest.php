@@ -83,6 +83,27 @@ class LeaseVorvertragTest extends TestCase
         unset($pre);
     }
 
+    // KI-generiert
+    public function test_the_summary_lists_the_same_leases_without_the_statement_figures(): void
+    {
+        [, $rentalUnit, $tenant] = $this->makeRentalUnit();
+        $managementUnit = $rentalUnit->managementUnit;
+        $this->makeLease($rentalUnit, $tenant, '2026-01-01', '2026-01-31', isPreContract: true, utilityAdvance: 100);
+        $main = $this->makeLease($rentalUnit, $tenant, '2026-02-01', '2026-12-31', isPreContract: false, utilityAdvance: 200);
+        $this->makeLease($rentalUnit, $tenant, '2025-01-01', '2025-06-30', isPreContract: false, utilityAdvance: 50);
+        $billingInterval = $managementUnit->managementGroup->billingIntervals()->first();
+        $billingInterval->update(['start_date' => '2026-01-01', 'end_date' => '2026-12-31']);
+        $resolver = new BillingStatementLeaseResolver;
+
+        $summary = $resolver->summaryForInterval($managementUnit->fresh(), $billingInterval->fresh());
+        $full = $resolver->forInterval($managementUnit->fresh(), $billingInterval->fresh());
+
+        $this->assertSame(['lease', 'tenantNames', 'rentalUnit'], array_keys($summary->first()));
+        $this->assertSame([$main->id], $summary->map(fn (array $entry) => $entry['lease']->id)->all());
+        $this->assertSame($full->map(fn (array $entry) => $entry['lease']->id)->all(), $summary->map(fn (array $entry) => $entry['lease']->id)->all());
+        $this->assertSame($full->first()['tenantNames'], $summary->first()['tenantNames']);
+    }
+
     public function test_the_store_form_rejects_a_pre_contract_that_is_the_last_lease(): void
     {
         [$user, $rentalUnit, $tenant] = $this->makeRentalUnit();

@@ -22,6 +22,9 @@ final class UnassignedBookingFinder
     /** Auf Cent genau vergleichen. */
     private const PRECISION = 2;
 
+    /** Schlüssel für Kostenzeilen ohne Leistungsdatum (zählen nur bei einmaligen Rechnungen). */
+    private const WITHOUT_DATE = '';
+
     /**
      * @return Collection<int, array{invoice: Invoice, date: string, expected: float, assigned: float, difference: float}>
      */
@@ -45,9 +48,12 @@ final class UnassignedBookingFinder
     private function mismatches(Invoice $invoice, string $today): array
     {
         $rows = [];
+        $assignedByDate = $this->assignedByDate($invoice);
 
         foreach ($this->expectedByDate($invoice, $today) as $date => $expected) {
-            $assigned = $this->assigned($invoice, (string) $date);
+            $assigned = $invoice->periodicity === Invoice::PERIODICITY_ONCE
+                ? round(array_sum($assignedByDate), self::PRECISION)
+                : round($assignedByDate[(string) $date] ?? 0.0, self::PRECISION);
             $difference = round($expected - $assigned, self::PRECISION);
 
             if ($difference !== 0.0) {
@@ -96,14 +102,20 @@ final class UnassignedBookingFinder
     }
 
     /**
-     * Summe der Kostenzeilen eines Termins; bei einer einmaligen Rechnung alle.
+     * Summe der Kostenzeilen je Termin, in einem Durchlauf – eine einmalige Rechnung
+     * zählt alle zusammen (siehe mismatches()).
+     *
+     * @return array<string, float> Datum (Y-m-d) => Summe
      */
-    private function assigned(Invoice $invoice, string $date): float
+    private function assignedByDate(Invoice $invoice): array
     {
-        $costs = $invoice->periodicity === Invoice::PERIODICITY_ONCE
-            ? $invoice->costs
-            : $invoice->costs->filter(fn ($cost) => $cost->period_date->toDateString() === $date);
+        $sums = [];
 
-        return round((float) $costs->sum('amount'), self::PRECISION);
+        foreach ($invoice->costs as $cost) {
+            $date = $cost->period_date?->toDateString() ?? self::WITHOUT_DATE;
+            $sums[$date] = ($sums[$date] ?? 0.0) + (float) $cost->amount;
+        }
+
+        return $sums;
     }
 }

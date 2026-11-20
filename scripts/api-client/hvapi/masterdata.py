@@ -67,7 +67,7 @@ class MasterData(Base):
         return self.session.ensure(
             "Mieter", " ".join(str(v) for v in (fields.get("first_name"), fields.get("last_name")) if v), [group],
             find=lambda: self.first_match(self.session.cached("/tenants"), {"user_group_id": group.id, **key}),
-            create=lambda: self._created("/tenants", {**fields, "user_group_id": group.id}),
+            create=lambda: self._appended("/tenants", {**fields, "user_group_id": group.id}),
         )
 
     def invoice_issuer(self, group: Record, **fields) -> Record:

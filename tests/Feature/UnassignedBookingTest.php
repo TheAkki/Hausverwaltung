@@ -93,6 +93,21 @@ class UnassignedBookingTest extends TestCase
         $this->assertSame([['Teilweise', '2026-01-05', 40.0], ['Ohne Kosten', '2026-01-05', 100.0]], $this->found());
     }
 
+    public function test_a_cost_without_period_date_counts_for_a_once_invoice_only(): void
+    {
+        $once = $this->invoice(['description' => 'Einmalig'], ['2026-01-05' => 60]);
+        $monthly = $this->invoice(['description' => 'Monatlich', 'periodicity' => 'monthly', 'recurrence_start' => '2026-03-05'], ['2026-03-05' => 60]);
+        foreach ([$once, $monthly] as $invoice) {
+            $invoice->costs()->create([
+                'costable_type' => $this->managementGroup->getMorphClass(), 'costable_id' => $this->managementGroup->id,
+                'billing_interval_id' => $this->managementGroup->billingIntervals()->value('id'), 'cost_category_id' => $this->category,
+                'amount' => 40, 'period_date' => null,
+            ]);
+        }
+
+        $this->assertSame([['Monatlich', '2026-03-05', 40.0]], $this->found());
+    }
+
     public function test_a_manual_invoice_is_checked_per_past_occurrence(): void
     {
         $invoice = $this->invoice(['description' => 'Händisch', 'periodicity' => 'manual'], ['2026-01-10' => 30, '2026-02-10' => 50]);

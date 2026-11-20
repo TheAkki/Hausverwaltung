@@ -223,7 +223,10 @@ class FakeApi:
         return self._page(items, query)
 
     def create_invoice(self, body, query, files):
+        # Wie die echte API: Zuordnung als costable_type/costable_id.
+        costable_type, _, costable_id = body["costable"].partition(":")
         return self._add("invoices", {**body, "amount": body.get("amount") or body["segments"][0]["amount"],
+                                      "costable_type": costable_type, "costable_id": int(costable_id),
                                       "file_path": None, "costs": [{"id": 0}]})
 
     def attach_file(self, invoice_id, body, query, files):

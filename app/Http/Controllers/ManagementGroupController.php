@@ -96,10 +96,9 @@ class ManagementGroupController extends Controller
             ->flatMap->leases;
         $income = $overview->incomeByRentalUnitType($leases, $year);
 
-        foreach ($leases->flatMap->leaseIntervals as $leaseInterval) {
-            $rentPaymentGenerator->generate($leaseInterval);
-        }
-        $managementGroup->load('managementUnits.rentalUnits.leases.leaseIntervals.rentPayments');
+        // Setzt rentPayments an den Intervallen – loadMissing lädt sie nicht noch einmal.
+        $rentPaymentGenerator->generateMany($leases->flatMap->leaseIntervals);
+        $managementGroup->loadMissing('managementUnits.rentalUnits.leases.leaseIntervals.rentPayments');
         $leases = $managementGroup->managementUnits->flatMap->rentalUnits->flatMap->leases;
         $bookedIncome = $overview->bookedIncomeByRentalUnitType($leases, $year);
 
@@ -118,8 +117,9 @@ class ManagementGroupController extends Controller
         // ManagementUnitController::show()) – hier mit demselben $costs, das auch schon
         // für die Ausgabenübersicht oben verwendet wird (Verwaltungsgruppe selbst plus
         // alle untergeordneten Verwaltungseinheiten/Mieteinheiten).
+        $costsByInterval = $costs->groupBy('billing_interval_id');
         $bookingsByInterval = $billingIntervals->mapWithKeys(
-            fn ($billingInterval) => [$billingInterval->id => $overview->bookingsByCategory($costs, $billingInterval->id)]
+            fn ($billingInterval) => [$billingInterval->id => $overview->bookingsByCategory($costsByInterval->get($billingInterval->id, collect()), $billingInterval->id)]
         );
 
         $rentalUnits = $managementGroup->managementUnits->flatMap->rentalUnits;

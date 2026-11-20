@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\SqlitePragmas;
 use Illuminate\Support\Str;
 use Pdo\Mysql;
 
@@ -38,9 +39,10 @@ return [
             'database' => env('DB_DATABASE', database_path('database.sqlite')),
             'prefix' => '',
             'foreign_key_constraints' => env('DB_FOREIGN_KEYS', true),
-            'busy_timeout' => null,
-            'journal_mode' => null,
-            'synchronous' => null,
+            // WAL + synchronous=NORMAL: kein fsync je Anweisung (siehe App\Support\SqlitePragmas).
+            'busy_timeout' => SqlitePragmas::busyTimeout(env('DB_BUSY_TIMEOUT')),
+            'journal_mode' => SqlitePragmas::journalMode(env('DB_JOURNAL_MODE')),
+            'synchronous' => SqlitePragmas::synchronous(env('DB_SYNCHRONOUS')),
             'transaction_mode' => 'DEFERRED',
         ],
 

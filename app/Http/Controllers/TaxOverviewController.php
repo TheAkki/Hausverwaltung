@@ -25,11 +25,10 @@ class TaxOverviewController extends Controller
         $managementGroup->load('managementUnits.rentalUnits.leases.tenants', 'managementUnits.rentalUnits.leases.leaseIntervals');
         $leases = $managementGroup->managementUnits->flatMap->rentalUnits->flatMap->leases;
 
-        foreach ($leases->flatMap->leaseIntervals as $leaseInterval) {
-            $rentPaymentGenerator->generate($leaseInterval);
-        }
+        // Setzt rentPayments an den Intervallen – loadMissing lädt sie nicht noch einmal.
+        $rentPaymentGenerator->generateMany($leases->flatMap->leaseIntervals);
 
-        $managementGroup->load(
+        $managementGroup->loadMissing(
             'managementUnits.rentalUnits.leases.leaseIntervals.rentPayments',
             'managementUnits.rentalUnits.leases.settlementClaims'
         );
