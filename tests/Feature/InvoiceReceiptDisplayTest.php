@@ -4,12 +4,12 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\FileDownloadController;
 use App\Models\Invoice;
 use App\Models\InvoiceIssuer;
 use App\Models\ManagementGroup;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 /**
@@ -51,14 +51,16 @@ class InvoiceReceiptDisplayTest extends TestCase
     public function test_an_attached_receipt_can_be_opened_and_downloaded(): void
     {
         $invoice = $this->invoice('invoices/abc.pdf', 'Rechnung Concordia.pdf');
-        $url = Storage::url('invoices/abc.pdf');
+        $openUrl = route('files.invoice', [$invoice, FileDownloadController::INLINE => 1]);
 
+        // Links auf die geschützte Download-Route, nicht auf /storage (KI-generiert).
         $this->actingAs($this->user)->get(route('invoices.show', $invoice))
             ->assertOk()
             ->assertSee('data-receipt', false)
             ->assertSee('Rechnung Concordia.pdf')
-            ->assertSee('href="'.$url.'" target="_blank" rel="noopener"', false)
-            ->assertSee('href="'.$url.'" download="Rechnung Concordia.pdf"', false)
+            ->assertSee('href="'.e($openUrl).'" target="_blank" rel="noopener"', false)
+            ->assertSee('href="'.route('files.invoice', $invoice).'"', false)
+            ->assertDontSee('/storage/invoices', false)
             ->assertSee('Öffnen')
             ->assertSee('Herunterladen')
             ->assertDontSee('Kein Beleg hinterlegt.');

@@ -240,6 +240,7 @@
                             <th class="py-2">{{ __('Buchungsdatum') }}</th>
                             <th class="py-2">{{ __('Status') }}</th>
                             <th class="py-2">{{ __('Notiz') }}</th>
+                            <th class="py-2">{{ __('Beleg') }}</th>
                             <th class="py-2"></th>
                         </tr>
                     </thead>
@@ -269,6 +270,7 @@
                                     </form>
                                 </td>
                                 <td class="py-2 text-gray-500">{{ $claim->notes }}</td>
+                                <td class="py-2"><x-receipt-link :record="$claim" route="files.settlement-claim" /></td>
                                 <td class="py-2">
                                     <form method="POST" action="{{ route('settlement-claims.destroy', $claim) }}" onsubmit="return confirm('{{ __('Forderung wirklich löschen?') }}')">
                                         @csrf
@@ -279,7 +281,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="7" class="py-2 text-gray-500">{{ __('Keine Forderungen vorhanden.') }}</td>
+                                <td colspan="8" class="py-2 text-gray-500">{{ __('Keine Forderungen vorhanden.') }}</td>
                             </tr>
                         @endforelse
                     </tbody>
@@ -341,7 +343,7 @@
                 <ul class="text-sm divide-y mb-4">
                     @forelse ($lease->documents as $document)
                         <li class="py-2 flex justify-between items-center">
-                            <a href="{{ Storage::url($document->file_path) }}" download="{{ $document->original_name }}" class="hover:underline">{{ $document->original_name }}</a>
+                            <a href="{{ route('files.lease-document', $document) }}" class="hover:underline">{{ $document->original_name }}</a>
                             <form method="POST" action="{{ route('lease-documents.destroy', $document) }}" onsubmit="return confirm('{{ __('Dokument wirklich löschen?') }}')">
                                 @csrf
                                 @method('DELETE')

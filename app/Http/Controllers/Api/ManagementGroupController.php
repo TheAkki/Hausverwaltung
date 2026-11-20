@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\ManagementGroup;
+use App\Services\GroupOwnership\ManagementGroupTransfer;
 use App\Services\InvoiceSeries\ForecastRefresher;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -16,6 +17,12 @@ use Illuminate\Validation\Rule;
  */
 class ManagementGroupController extends Controller
 {
+    /**
+     * Feld der Antwort von update(): welche Stammdaten beim Wechsel der Benutzergruppe
+     * mitverschoben, kopiert oder in der neuen Gruppe wiederverwendet wurden.
+     */
+    public const TRANSFER_FIELD = 'transfer';
+
     public function __construct()
     {
         $this->authorizeResource(ManagementGroup::class, 'managementGroup');
@@ -51,7 +58,7 @@ class ManagementGroupController extends Controller
         return response()->json($managementGroup);
     }
 
-    public function update(Request $request, ManagementGroup $managementGroup, ForecastRefresher $forecastRefresher): JsonResponse
+    public function update(Request $request, ManagementGroup $managementGroup, ForecastRefresher $forecastRefresher, ManagementGroupTransfer $transfer): JsonResponse
     {
         $validated = $this->validated($request, withBillingTemplate: true);
 
@@ -62,13 +69,17 @@ class ManagementGroupController extends Controller
 
         $forecastModeChanged = $validated['variable_cost_forecast_mode'] !== $managementGroup->variable_cost_forecast_mode;
 
-        $managementGroup->update($validated);
+        // Ein Wechsel der Benutzergruppe nimmt die Stammdaten mit (ManagementGroupTransfer).
+        $templateBefore = $managementGroup->default_billing_template_id;
+        $report = $transfer->move($managementGroup, (int) $validated['user_group_id']);
+        $validated = $transfer->keepMovedTemplate($validated, $templateBefore, $managementGroup);
+        $managementGroup->update(collect($validated)->except('user_group_id')->all());
 
         if ($forecastModeChanged) {
             $forecastRefresher->refreshManagementGroup($managementGroup);
         }
 
-        return response()->json($managementGroup);
+        return response()->json([...$managementGroup->toArray(), self::TRANSFER_FIELD => $report->toArray()]);
     }
 
     public function destroy(ManagementGroup $managementGroup): JsonResponse

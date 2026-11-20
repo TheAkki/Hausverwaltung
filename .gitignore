@@ -23,6 +23,7 @@
 /storage/*.key
 /storage/pail
 /storage/framework/mpdf/
+/storage/framework/docs-screenshots/
 /vendor
 _ide_helper.php
 Homestead.json

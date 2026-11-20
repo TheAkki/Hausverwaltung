@@ -76,6 +76,7 @@ final class InvoiceForecastWriter
         $end = $segments[array_key_last($segments)]->end;
         $this->assertRange($schedule, $anchor, $end);
         $this->rememberRecurrence($invoice, $schedule, $anchor, $end);
+        $this->rememberSegments($invoice, $segments);
         $managementGroup = CostableManagementGroup::of($costable);
         $forecastInterval = $end !== null ? ($pin ?? $this->intervals->covering($managementGroup, $anchor)) : null;
 
@@ -139,6 +140,33 @@ final class InvoiceForecastWriter
         }
 
         $invoice->update(['recurrence_start' => $anchor, 'recurrence_end' => $end]);
+    }
+
+    /**
+     * Betragsintervalle an der Rechnung festhalten (Sollbetrag je Termin, siehe
+     * Invoice::expectedAmountOn()). Beim Verlängern ersetzen die neuen Intervalle die
+     * bisherigen ab ihrem Beginn; frühere bleiben, enden aber spätestens davor.
+     *
+     * @param  non-empty-list<CostSegment>  $segments
+     */
+    private function rememberSegments(Invoice $invoice, array $segments): void
+    {
+        $newStart = $segments[0]->start;
+        $dayBefore = Carbon::parse($newStart)->subDay()->toDateString();
+        $kept = [];
+
+        foreach ($invoice->amount_segments ?? [] as $old) {
+            if ($old['start_date'] < $newStart) {
+                $end = $old['end_date'] === null || $old['end_date'] >= $newStart ? $dayBefore : $old['end_date'];
+                $kept[] = [...$old, 'end_date' => $end];
+            }
+        }
+
+        $new = array_map(fn (CostSegment $segment) => [
+            'start_date' => $segment->start, 'end_date' => $segment->end, 'amount' => $segment->amount,
+        ], $segments);
+
+        $invoice->update(['amount_segments' => [...$kept, ...$new]]);
     }
 
     /**

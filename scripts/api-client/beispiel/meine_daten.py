@@ -6,12 +6,17 @@
 Den Token erzeugt Anna im Web unter Profil → API-Zugang. Das Script kann beliebig oft
 laufen: Vorhandenes wird erkannt, nur Neues wird ergänzt. Pfade (Belege, Kopfbild)
 sind relativ zu dieser Datei.
+
+Anna vermietet das Haus gemeinsam mit Bert. Deshalb entsteht alles gleich in der
+gemeinsamen Gruppe, die der Administrator angelegt hat (siehe admin_daten.py): Mieter,
+Rechnungssteller und eigene Kategorien gehören zur Gruppe ihrer Verwaltungsgruppe.
+Was nur Anna allein vermietet, käme in ``hv.personal_group()``.
 """
 
 
 def importieren(hv):
-    gruppe = hv.personal_group()
-    hv.group_landlord(gruppe, name="Beispiel", first_name="Anna", street="Lindenweg 2",
+    gruppe = hv.group("Erbengemeinschaft Beispiel")
+    hv.group_landlord(gruppe, name="Erbengemeinschaft Beispiel", street="Lindenweg 2",
                       postal_code="01234", city="Musterstadt", iban="DE02120300000000202051")
 
     # Mieter
@@ -80,8 +85,8 @@ def importieren(hv):
     # Nachzahlung aus der Abrechnung 2025
     hv.settlement_claim(vertrag_eg, jahr_2025, "2026-03-15", 84.20, notes="Abrechnung 2025")
 
-    # Vorlage der gemeinsamen Gruppe und Verwaltungsgruppe dorthin verschieben
-    gemeinsam = hv.group("Erbengemeinschaft Beispiel")
-    vorlage = hv.billing_template(gemeinsam, "Abrechnung Musterstraße", header_image="kopfbild.png",
+    # Vorlage der Gruppe als Standard der Verwaltungsgruppe. Sie liegt schon in der
+    # Gruppe; move_management_group setzt hier nur die Standardvorlage.
+    vorlage = hv.billing_template(gruppe, "Abrechnung Musterstraße", header_image="kopfbild.png",
                                   content="<h1>Betriebskostenabrechnung</h1>", css_content="h1 { color: #285aa0; }")
-    hv.move_management_group(haus, gemeinsam, default_billing_template=vorlage)
+    hv.move_management_group(haus, gruppe, default_billing_template=vorlage)

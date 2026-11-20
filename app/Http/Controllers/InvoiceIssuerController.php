@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\CopyInvoiceIssuerRequest;
 use App\Models\InvoiceIssuer;
 use App\Rules\ValidIban;
+use App\Services\GroupOwnership\MasterDataCopier;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -13,6 +15,9 @@ use Illuminate\View\View;
  */
 class InvoiceIssuerController extends Controller
 {
+    /** Session-Schlüssel der Meldung nach „In andere Gruppe kopieren“. */
+    public const COPY_STATUS = 'invoice_issuer_copy';
+
     public function __construct()
     {
         $this->authorizeResource(InvoiceIssuer::class, 'invoiceIssuer');
@@ -70,11 +75,36 @@ class InvoiceIssuerController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(InvoiceIssuer $invoiceIssuer): View
+    public function show(Request $request, InvoiceIssuer $invoiceIssuer): View
     {
-        $invoiceIssuer->load('invoices', 'accounts');
+        // Nur Rechnungen, die der Betrachter sehen darf (sonst verriete die Liste
+        // Rechnungen anderer Gruppen); Rechnungen ohne Zuordnung gehören zur Gruppe des
+        // Rechnungsstellers selbst.
+        $invoiceIssuer->load([
+            'invoices' => fn ($query) => $query->where(
+                fn ($visible) => $visible->visibleTo($request->user())->orWhereNull('costable_type')
+            ),
+            'accounts',
+        ]);
 
-        return view('invoice-issuers.show', compact('invoiceIssuer'));
+        $copyTargets = $request->user()->groups->where('id', '!=', $invoiceIssuer->user_group_id)->values();
+
+        return view('invoice-issuers.show', compact('invoiceIssuer', 'copyTargets'));
+    }
+
+    /**
+     * „In andere Gruppe kopieren“: legt den Rechnungssteller samt Kundenaccounts in
+     * der gewählten Gruppe an – oder ergänzt einen gleichen, der dort schon existiert
+     * (MasterDataCopier). Zum Beispiel für dieselben Stadtwerke in der persönlichen
+     * und einer gemeinsamen Gruppe.
+     */
+    public function copy(CopyInvoiceIssuerRequest $request, InvoiceIssuer $invoiceIssuer, MasterDataCopier $copier): RedirectResponse
+    {
+        [$target, $created] = $copier->copyTo($invoiceIssuer, $request->targetGroupId());
+
+        return redirect()->route('invoice-issuers.show', $target)->with(self::COPY_STATUS, $created
+            ? __('Der Rechnungssteller wurde mit seinen Kundenaccounts in diese Gruppe kopiert.')
+            : __('Der Rechnungssteller existierte in dieser Gruppe schon; fehlende Kundenaccounts wurden ergänzt.'));
     }
 
     /**

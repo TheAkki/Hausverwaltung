@@ -5,6 +5,7 @@ namespace Tests\Feature\Api;
 use App\Models\BillingTemplate;
 use App\Models\LeaseDocument;
 use App\Models\User;
+use App\Support\FileStorage;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -19,7 +20,7 @@ class BillingTemplateDocumentControllerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        Storage::fake('public');
+        Storage::fake(FileStorage::diskName());
     }
 
     /**
@@ -38,7 +39,7 @@ class BillingTemplateDocumentControllerTest extends TestCase
             'is_default' => true, 'header_image' => UploadedFile::fake()->image('kopf.png'),
         ]), ['Accept' => 'application/json'])->assertCreated()->assertJsonPath('is_default', false)->json();
 
-        Storage::disk('public')->assertExists($template['header_image_path']);
+        FileStorage::disk()->assertExists($template['header_image_path']);
         $this->getJson(route('api.billing-templates.index'))->assertOk()->assertJsonFragment(['name' => 'Eigene']);
         $this->getJson(route('api.billing-templates.show', $template['id']))->assertOk();
     }
@@ -51,11 +52,11 @@ class BillingTemplateDocumentControllerTest extends TestCase
         $path = $this->post(route('api.billing-templates.header-image.store', $id), [
             'header_image' => UploadedFile::fake()->image('neu.png'),
         ], ['Accept' => 'application/json'])->assertOk()->json('header_image_path');
-        Storage::disk('public')->assertExists($path);
+        FileStorage::disk()->assertExists($path);
 
         $this->putJson(route('api.billing-templates.update', $id), $this->templatePayload($user, ['name' => 'Umbenannt', 'remove_header_image' => true]))
             ->assertOk()->assertJsonPath('name', 'Umbenannt')->assertJsonPath('header_image_path', null);
-        Storage::disk('public')->assertMissing($path);
+        FileStorage::disk()->assertMissing($path);
 
         $this->postJson(route('api.billing-templates.header-image.store', $id), [])->assertUnprocessable();
         $this->deleteJson(route('api.billing-templates.destroy', $id))->assertNoContent();
@@ -84,10 +85,10 @@ class BillingTemplateDocumentControllerTest extends TestCase
         $document = $this->post(route('api.leases.documents.store', $lease), [
             'file' => UploadedFile::fake()->create('vertrag.pdf', 10, 'application/pdf'),
         ], ['Accept' => 'application/json'])->assertCreated()->assertJsonPath('original_name', 'vertrag.pdf')->json();
-        Storage::disk('public')->assertExists($document['file_path']);
+        FileStorage::disk()->assertExists($document['file_path']);
 
         $this->deleteJson(route('api.lease-documents.destroy', $document['id']))->assertNoContent();
-        Storage::disk('public')->assertMissing($document['file_path']);
+        FileStorage::disk()->assertMissing($document['file_path']);
         $this->assertNull(LeaseDocument::find($document['id']));
     }
 

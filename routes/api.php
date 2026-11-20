@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\MaintenanceContractController;
 use App\Http\Controllers\Api\ManagementGroupController;
 use App\Http\Controllers\Api\ManagementUnitController;
 use App\Http\Controllers\Api\OpenBookingController;
+use App\Http\Controllers\Api\RecordReceiptController;
 use App\Http\Controllers\Api\RentalUnitController;
 use App\Http\Controllers\Api\RentPaymentBookingController;
 use App\Http\Controllers\Api\RentPaymentController;
@@ -74,6 +75,7 @@ Route::name('api.')->group(function () {
         Route::delete('/groups/{group}/members/{user}', [GroupMembershipController::class, 'destroy'])->name('groups.members.destroy');
 
         Route::apiResource('invoice-issuers', InvoiceIssuerController::class)->parameters(['invoice-issuers' => 'invoiceIssuer']);
+        Route::post('/invoice-issuers/{invoiceIssuer}/copy', [InvoiceIssuerController::class, 'copy'])->name('invoice-issuers.copy');
         Route::post('/invoice-issuer-accounts', [InvoiceIssuerAccountController::class, 'store'])->name('invoice-issuer-accounts.store');
         Route::put('/invoice-issuer-accounts/{invoiceIssuerAccount}', [InvoiceIssuerAccountController::class, 'update'])->name('invoice-issuer-accounts.update');
         Route::delete('/invoice-issuer-accounts/{invoiceIssuerAccount}', [InvoiceIssuerAccountController::class, 'destroy'])->name('invoice-issuer-accounts.destroy');
@@ -94,6 +96,9 @@ Route::name('api.')->group(function () {
         Route::put('/accounts/{account}', [AccountController::class, 'update'])->name('accounts.update');
         Route::delete('/accounts/{account}', [AccountController::class, 'destroy'])->name('accounts.destroy');
         Route::post('/account-transfers', [AccountController::class, 'transfer'])->name('account-transfers.store');
+        Route::post('/account-transfers/{accountTransfer}/file', [RecordReceiptController::class, 'storeTransfer'])->name('account-transfers.file.store');
+        Route::get('/account-transfers/{accountTransfer}/file', [RecordReceiptController::class, 'showTransfer'])->name('account-transfers.file.show');
+        Route::delete('/account-transfers/{accountTransfer}/file', [RecordReceiptController::class, 'destroyTransfer'])->name('account-transfers.file.destroy');
 
         Route::post('/maintenance-contracts', [MaintenanceContractController::class, 'store'])->name('maintenance-contracts.store');
         Route::put('/maintenance-contracts/{maintenanceContract}', [MaintenanceContractController::class, 'update'])->name('maintenance-contracts.update');
@@ -112,6 +117,9 @@ Route::name('api.')->group(function () {
         Route::post('/settlement-claims', [SettlementClaimController::class, 'store'])->name('settlement-claims.store');
         Route::put('/settlement-claims/{settlementClaim}', [SettlementClaimController::class, 'update'])->name('settlement-claims.update');
         Route::delete('/settlement-claims/{settlementClaim}', [SettlementClaimController::class, 'destroy'])->name('settlement-claims.destroy');
+        Route::post('/settlement-claims/{settlementClaim}/file', [RecordReceiptController::class, 'storeClaim'])->name('settlement-claims.file.store');
+        Route::get('/settlement-claims/{settlementClaim}/file', [RecordReceiptController::class, 'showClaim'])->name('settlement-claims.file.show');
+        Route::delete('/settlement-claims/{settlementClaim}/file', [RecordReceiptController::class, 'destroyClaim'])->name('settlement-claims.file.destroy');
 
         Route::apiResource('billing-templates', BillingTemplateController::class)->parameters(['billing-templates' => 'billingTemplate']);
         Route::post('/billing-templates/{billingTemplate}/header-image', [BillingTemplateController::class, 'storeHeaderImage'])

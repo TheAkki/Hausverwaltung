@@ -14,6 +14,16 @@
 
     <div class="py-12">
         <div class="max-w-[1770px] mx-auto sm:px-6 lg:px-8 space-y-6">
+            @if ($transferLines = session(\App\Http\Controllers\ManagementGroupController::TRANSFER_REPORT))
+                <div class="bg-green-50 border border-green-200 text-green-900 rounded-lg p-4 text-sm" data-transfer-report>
+                    <p class="font-semibold">{{ __('Die Verwaltungsgruppe ist mit ihren Stammdaten in die neue Gruppe umgezogen.') }}</p>
+                    <ul class="mt-1 list-disc ml-5">
+                        @foreach ($transferLines as $line)
+                            <li>{{ $line }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+            @endif
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg p-6">
                 <div class="flex justify-between items-center mb-4">
                     <h3 class="font-semibold">{{ __('Verwaltungseinheiten') }}</h3>
@@ -175,7 +185,7 @@
 
                     @if ($managementGroup->accounts->count() >= 2)
                         <h4 class="font-medium text-sm mb-2">{{ __('Geld zwischen Konten verschieben') }}</h4>
-                        <form method="POST" action="{{ route('account-transfers.store') }}" class="grid grid-cols-2 gap-3 items-end">
+                        <form method="POST" action="{{ route('account-transfers.store') }}" class="grid grid-cols-2 gap-3 items-end" enctype="multipart/form-data">
                             @csrf
                             <input type="hidden" name="management_group_id" value="{{ $managementGroup->id }}">
 
@@ -212,11 +222,60 @@
                                 <x-text-input id="transfer_comment" name="comment" type="text" class="mt-1 block w-full" />
                             </div>
 
+                            <x-receipt-input id="transfer_file" class="col-span-2" route="files.account-transfer" />
+
                             <div class="col-span-2">
                                 <x-input-error :messages="$errors->get('to_account_id')" class="mt-2" />
                                 <x-primary-button>{{ __('Verschieben') }}</x-primary-button>
                             </div>
                         </form>
+                    @endif
+
+                    @if ($transfers->isNotEmpty())
+                        <h4 class="font-medium text-sm mt-6 mb-2">{{ __('Umbuchungen') }}</h4>
+                        <div class="overflow-x-auto">
+                        <table class="w-full text-sm text-left" data-transfers>
+                            <thead class="text-gray-600">
+                                <tr>
+                                    <th class="py-2">{{ __('Datum') }}</th>
+                                    <th class="py-2">{{ __('Von Konto') }}</th>
+                                    <th class="py-2">{{ __('Zu Konto') }}</th>
+                                    <th class="py-2">{{ __('Betrag') }}</th>
+                                    <th class="py-2">{{ __('Kommentar') }}</th>
+                                    <th class="py-2">{{ __('Beleg') }}</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y">
+                                @foreach ($transfers as $transfer)
+                                    <tr>
+                                        <td class="py-2 whitespace-nowrap">{{ $transfer->transfer_date->format('d.m.Y') }}</td>
+                                        <td class="py-2">{{ $transfer->fromAccount->name }}</td>
+                                        <td class="py-2">{{ $transfer->toAccount->name }}</td>
+                                        <td class="py-2 whitespace-nowrap">{{ euro($transfer->amount) }} €</td>
+                                        <td class="py-2 text-gray-500">{{ $transfer->comment }}</td>
+                                        <td class="py-2">
+                                            @if ($transfer->file_path)
+                                                <div class="flex items-center gap-3">
+                                                    <x-receipt-link :record="$transfer" route="files.account-transfer" />
+                                                    <form method="POST" action="{{ route('account-transfers.file.destroy', $transfer) }}" onsubmit="return confirm('{{ __('Beleg wirklich entfernen?') }}')">
+                                                        @csrf
+                                                        @method('DELETE')
+                                                        <button type="submit" class="text-red-600 hover:underline">{{ __('Entfernen') }}</button>
+                                                    </form>
+                                                </div>
+                                            @else
+                                                <form method="POST" action="{{ route('account-transfers.file.store', $transfer) }}" enctype="multipart/form-data" class="flex items-center gap-2">
+                                                    @csrf
+                                                    <input type="file" name="{{ \App\Services\RecordReceipt::FIELD_FILE }}" accept=".{{ implode(',.', \App\Support\FileStorage::ALLOWED_EXTENSIONS) }}" class="text-xs" required>
+                                                    <button type="submit" class="text-gray-600 hover:underline">{{ __('Hochladen') }}</button>
+                                                </form>
+                                            @endif
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                        </div>
                     @endif
                 </div>
             @endif

@@ -2,16 +2,20 @@
 
 namespace Database\Seeders;
 
+use App\Exceptions\GroupMismatchException;
 use App\Models\Account;
 use App\Models\BillingInterval;
 use App\Models\CostCategory;
 use App\Models\Group;
+use App\Models\InvoiceIssuer;
+use App\Models\InvoiceIssuerAccount;
 use App\Models\Lease;
 use App\Models\ManagementGroup;
 use App\Models\ManagementUnit;
 use App\Models\RentalUnit;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Services\GroupOwnership\GroupOwnership;
 use Database\Seeders\Concerns\ParsesYamlValues;
 use Database\Seeders\Concerns\SeedsBillingTemplates;
 use Database\Seeders\Concerns\SeedsBuchungen;
@@ -44,6 +48,18 @@ class TestDataSeeder extends Seeder
     use SeedsLeases;
 
     private const RENTAL_UNIT_TYPES = ['Wohnung', 'Garage', 'Stellplatz'];
+
+    /** Hinweis, wenn Stammdaten und Verwaltungsgruppe in verschiedenen Gruppen landen. */
+    private const GROUP_MISMATCH_HINT = 'Mieter, Rechnungssteller und eigene Kategorien einer Verwaltungsgruppe, die unter "Groups" einer Group-* steht, gehören in diese Group-* (gleicher Aufbau wie auf Account-Ebene).';
+
+    /** Stammdaten, die auf Account-Ebene (persönliche Gruppe) oder unter Group-* stehen dürfen. */
+    private const MASTER_DATA_ACCOUNT_LEVEL = 'Account';
+
+    /** Schlüssel, die unter Group-* genau so stehen dürfen. */
+    private const SHAREGROUP_KEYS = ['Name', 'Admins', 'Users', 'Groups', 'Templates', 'Kategorien'];
+
+    /** Schlüssel, die unter Group-* als Block ("Mieter:") oder einzeln ("Mieter-3:") stehen dürfen. */
+    private const SHAREGROUP_KEY_PREFIXES = ['Mieter', 'Rechnungssteller'];
 
     /**
      * Run the database seeds.
@@ -85,7 +101,11 @@ class TestDataSeeder extends Seeder
         $managementGroupsByAccountKey = [];
 
         foreach ($accountsByKey as $key => $accountData) {
-            [$user, $managementGroupsByKey] = $this->seedAccount($accountData);
+            try {
+                [$user, $managementGroupsByKey] = $this->seedAccount($accountData);
+            } catch (GroupMismatchException $e) {
+                throw new \RuntimeException("Account-{$key}: {$e->getMessage()} ".self::GROUP_MISMATCH_HINT, previous: $e);
+            }
             $usersByAccountKey[$key] = $user;
             $managementGroupsByAccountKey[$key] = $managementGroupsByKey;
         }
@@ -205,17 +225,20 @@ class TestDataSeeder extends Seeder
             $this->seedLandlord($accountLandlordData, userGroupId: $userGroup->id, managementGroupId: null);
         }
 
-        $tenantsByKey = [];
-        foreach ($this->entriesMatchingWithKeysUnwrapped($account, 'Mieter') as $key => $tenantData) {
-            $tenantsByKey[$key] = $this->seedTenant($tenantData, $userGroup->id);
-        }
+        // Group-* (Sharegroups) entstehen schon hier, damit ihre Verwaltungsgruppen und
+        // Stammdaten gleich in der richtigen Benutzergruppe angelegt werden (GroupOwnership:
+        // Mieter/Rechnungssteller/Kategorien gehören in die Gruppe ihrer Verwaltungsgruppe).
+        // Mitglieder und Vorlagen folgen in seedSharegroups(), wenn alle Accounts existieren.
+        $sharegroups = $this->prepareSharegroups($account, $user);
+        $groupIdByManagementGroupKey = $this->sharedManagementGroupKeys($sharegroups);
 
+        $tenantsByKey = [];
         $invoiceIssuersByKey = [];
         $invoiceIssuerAccountsByKey = [];
-        foreach ($this->entriesMatchingWithKeysUnwrapped($account, 'Rechnungssteller') as $key => $issuerData) {
-            $issuer = $this->seedInvoiceIssuer($issuerData, $userGroup->id);
-            $invoiceIssuersByKey[$key] = $issuer;
-            $invoiceIssuerAccountsByKey[$key] = $this->seedInvoiceIssuerAccounts($issuerData, $issuer);
+        $origins = [];
+        $this->seedMasterData($account, $userGroup->id, self::MASTER_DATA_ACCOUNT_LEVEL, $origins, $tenantsByKey, $invoiceIssuersByKey, $invoiceIssuerAccountsByKey);
+        foreach ($sharegroups as $groupKey => [$sharegroup, $sharegroupData]) {
+            $this->seedMasterData($sharegroupData, $sharegroup->id, "Group-{$groupKey}", $origins, $tenantsByKey, $invoiceIssuersByKey, $invoiceIssuerAccountsByKey);
         }
 
         $managementGroupsByKey = [];
@@ -233,7 +256,7 @@ class TestDataSeeder extends Seeder
             $kontenForThisGroup = [];
 
             $managementGroupsByKey[$vgKey] = $this->seedManagementGroup(
-                $managementGroupData, $vgKey, $user, $userGroup->id, $accountKontosystemDefault, $tenantsByKey, $unitsByKey, $rentalsByKey, $intervalsByKey, $leasesForThisGroup, $kontenForThisGroup
+                $managementGroupData, $vgKey, $user, $groupIdByManagementGroupKey[$vgKey] ?? $userGroup->id, $accountKontosystemDefault, $tenantsByKey, $unitsByKey, $rentalsByKey, $intervalsByKey, $leasesForThisGroup, $kontenForThisGroup
             );
             $managementUnitsByKey[$vgKey] = $unitsByKey;
             $rentalUnitsByKey[$vgKey] = $rentalsByKey;
@@ -244,6 +267,15 @@ class TestDataSeeder extends Seeder
 
         if (isset($account['Kategorien']) && is_array($account['Kategorien'])) {
             $this->seedCategories($account['Kategorien'], $managementGroupsByKey, $userGroup->id);
+        }
+
+        // Kategorien einer Group-* gehören dieser Gruppe und gelten für ihre
+        // Verwaltungsgruppen – nach denen des Accounts, damit ihr Abrechnungsschlüssel gilt.
+        foreach ($sharegroups as [$sharegroup, $sharegroupData]) {
+            if (isset($sharegroupData['Kategorien']) && is_array($sharegroupData['Kategorien'])) {
+                $ownManagementGroups = array_filter($managementGroupsByKey, fn (ManagementGroup $mg) => $mg->user_group_id === $sharegroup->id);
+                $this->seedCategories($sharegroupData['Kategorien'], $ownManagementGroups, $sharegroup->id);
+            }
         }
 
         if (isset($account['Rechnungen']) && is_array($account['Rechnungen'])) {
@@ -331,12 +363,154 @@ class TestDataSeeder extends Seeder
                 continue;
             }
 
-            foreach ($managementGroupsByKey as $managementGroup) {
+            // Nur Verwaltungsgruppen, in denen die Kategorie verwendet werden darf: eine
+            // eigene Kategorie des Accounts gilt nicht in seinen geteilten Verwaltungsgruppen.
+            $fitting = array_filter($managementGroupsByKey, fn (ManagementGroup $mg) => GroupOwnership::categoryFits($category, $mg));
+
+            foreach ($fitting as $managementGroup) {
                 $managementGroup->costCategories()->syncWithoutDetaching([
                     $category->id => ['allocation_key' => $allocationKey],
                 ]);
             }
         }
+    }
+
+    /**
+     * Legt die "Group"/"Group-*"-Einträge des Accounts als Benutzergruppen an (Besitzer
+     * und Admin: dieser Account), bevor seine Stammdaten und Verwaltungsgruppen
+     * entstehen.
+     *
+     * @param  array<string, mixed>  $account
+     * @return array<string, array{0: Group, 1: array<string, mixed>}> je YAML-Suffix: Gruppe und ihr Eintrag
+     */
+    private function prepareSharegroups(array $account, User $creator): array
+    {
+        $sharegroups = [];
+
+        foreach ($this->entriesMatchingWithKeys($account, 'Group') as $key => $sharegroupData) {
+            $name = trim((string) ($sharegroupData['Name'] ?? ''));
+
+            if ($name === '') {
+                throw new \RuntimeException('Ein Group-Eintrag (Sharegroup) hat keinen Namen.');
+            }
+
+            $this->assertKnownSharegroupKeys($sharegroupData, $key === '' ? 'Group' : "Group-{$key}");
+
+            $sharegroup = Group::firstOrCreate(['name' => $name], ['owner_id' => $creator->id]);
+            $sharegroup->users()->syncWithoutDetaching([$creator->id => ['role' => 'admin']]);
+            $creator->unsetRelation('groups');
+            $sharegroups[(string) $key] = [$sharegroup, $sharegroupData];
+        }
+
+        return $sharegroups;
+    }
+
+    /**
+     * Bricht ab, wenn unter einer Group-* ein Schlüssel steht, den der Seeder dort nicht
+     * liest (z. B. "Buchungen"), statt ihn still zu übergehen.
+     *
+     * @param  array<array-key, mixed>  $sharegroupData
+     */
+    private function assertKnownSharegroupKeys(array $sharegroupData, string $label): void
+    {
+        $unknown = array_values(array_filter(
+            array_map('strval', array_keys($sharegroupData)),
+            fn (string $key) => ! $this->isKnownSharegroupKey($key)
+        ));
+
+        if ($unknown !== []) {
+            $allowed = implode(', ', [...self::SHAREGROUP_KEYS, ...self::SHAREGROUP_KEY_PREFIXES]);
+
+            throw new \RuntimeException(
+                "{$label}: unbekannte Einträge \"".implode('", "', $unknown)."\". Erlaubt sind: {$allowed}. ".
+                'Verwaltungsgruppen, Rechnungen und Buchungen stehen auf Account-Ebene.'
+            );
+        }
+    }
+
+    private function isKnownSharegroupKey(string $key): bool
+    {
+        if (in_array($key, self::SHAREGROUP_KEYS, true)) {
+            return true;
+        }
+
+        foreach (self::SHAREGROUP_KEY_PREFIXES as $prefix) {
+            if ($key === $prefix || str_starts_with($key, "{$prefix}-")) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Welche Verwaltungsgruppe (YAML-Suffix) in welche Group-* gehört ("Groups").
+     *
+     * @param  array<string, array{0: Group, 1: array<string, mixed>}>  $sharegroups
+     * @return array<string, int> Verwaltungsgruppen-Suffix => Id der Benutzergruppe
+     */
+    private function sharedManagementGroupKeys(array $sharegroups): array
+    {
+        $groupIds = [];
+
+        foreach ($sharegroups as [$sharegroup, $sharegroupData]) {
+            foreach ((array) ($sharegroupData['Groups'] ?? []) as $vgRef) {
+                $vgKey = $this->normalizeReferenceKey((string) $vgRef, 'Verwaltungsgruppe-');
+
+                if (isset($groupIds[$vgKey]) && $groupIds[$vgKey] !== $sharegroup->id) {
+                    throw new \RuntimeException("\"{$vgRef}\" steht unter \"Groups\" mehrerer Group-Einträge; eine Verwaltungsgruppe gehört genau einer Gruppe.");
+                }
+
+                $groupIds[$vgKey] = $sharegroup->id;
+            }
+        }
+
+        return $groupIds;
+    }
+
+    /**
+     * Mieter-* und Rechnungssteller-* (samt Kundenaccount-*) einer Ebene (Account oder
+     * Group-*) in deren Benutzergruppe. Die Schlüssel gelten im ganzen Account, damit
+     * Mietverträge und Rechnungen sie eindeutig referenzieren.
+     *
+     * @param  array<string, mixed>  $data
+     * @param  array<string, string>  $origins  "Mieter-1" => Ebene, an der er schon definiert ist
+     * @param  array<string, Tenant>  $tenantsByKey
+     * @param  array<string, InvoiceIssuer>  $invoiceIssuersByKey
+     * @param  array<string, array<string, InvoiceIssuerAccount>>  $invoiceIssuerAccountsByKey
+     */
+    private function seedMasterData(
+        array $data,
+        int $userGroupId,
+        string $level,
+        array &$origins,
+        array &$tenantsByKey,
+        array &$invoiceIssuersByKey,
+        array &$invoiceIssuerAccountsByKey
+    ): void {
+        foreach ($this->entriesMatchingWithKeysUnwrapped($data, 'Mieter') as $key => $tenantData) {
+            $this->claimKey($origins, "Mieter-{$key}", $level);
+            $tenantsByKey[$key] = $this->seedTenant($tenantData, $userGroupId);
+        }
+
+        foreach ($this->entriesMatchingWithKeysUnwrapped($data, 'Rechnungssteller') as $key => $issuerData) {
+            $this->claimKey($origins, "Rechnungssteller-{$key}", $level);
+            $issuer = $this->seedInvoiceIssuer($issuerData, $userGroupId);
+            $invoiceIssuersByKey[$key] = $issuer;
+            $invoiceIssuerAccountsByKey[$key] = $this->seedInvoiceIssuerAccounts($issuerData, $issuer);
+        }
+    }
+
+    /**
+     * @param  array<string, string>  $origins
+     */
+    private function claimKey(array &$origins, string $key, string $level): void
+    {
+        if (isset($origins[$key])) {
+            throw new \RuntimeException("{$key} ist mehrfach angegeben ({$origins[$key]} und {$level}); die Nummern müssen im ganzen Account eindeutig sein.");
+        }
+
+        $origins[$key] = $level;
     }
 
     /**

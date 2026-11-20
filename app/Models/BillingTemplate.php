@@ -2,13 +2,15 @@
 
 namespace App\Models;
 
+use App\Observers\BillingTemplateObserver;
+use App\Support\FileStorage;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * Represents a Blade-based Betriebskostenabrechnung template with optional header
@@ -17,6 +19,7 @@ use Illuminate\Support\Facades\Storage;
  * templates are assigned to one of the creating user's Benutzergruppen.
  */
 #[Fillable(['user_group_id', 'name', 'content', 'css_content', 'header', 'footer', 'header_image_path', 'is_default'])]
+#[ObservedBy(BillingTemplateObserver::class)]
 class BillingTemplate extends Model
 {
     use HasFactory;
@@ -60,7 +63,7 @@ class BillingTemplate extends Model
 
     public function headerImageUrl(): ?string
     {
-        return $this->header_image_path ? Storage::disk('public')->url($this->header_image_path) : null;
+        return $this->header_image_path ? route('files.billing-template-image', $this) : null;
     }
 
     /**
@@ -73,12 +76,12 @@ class BillingTemplate extends Model
      */
     public function headerImageDataUri(): ?string
     {
-        if ($this->header_image_path === null || ! Storage::disk('public')->exists($this->header_image_path)) {
+        if ($this->header_image_path === null || ! FileStorage::disk()->exists($this->header_image_path)) {
             return null;
         }
 
-        $contents = Storage::disk('public')->get($this->header_image_path);
-        $mimeType = Storage::disk('public')->mimeType($this->header_image_path) ?: 'application/octet-stream';
+        $contents = FileStorage::disk()->get($this->header_image_path);
+        $mimeType = FileStorage::disk()->mimeType($this->header_image_path) ?: 'application/octet-stream';
 
         return 'data:'.$mimeType.';base64,'.base64_encode($contents);
     }

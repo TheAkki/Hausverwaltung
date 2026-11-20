@@ -25,11 +25,12 @@ use App\Models\SettlementClaim;
 use App\Models\Tenant;
 use App\Models\Theme;
 use App\Models\User;
+use App\Services\GroupOwnership\GroupOwnership;
+use App\Support\FileStorage;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use ZipArchive;
 
@@ -72,8 +73,6 @@ class BackupService
     ];
 
     private const TEMPLATE_FIELDS = ['name', 'content', 'css_content', 'header', 'footer', 'is_default'];
-
-    private const BILLING_TEMPLATE_DIRECTORY = 'billing-templates';
 
     private const ROLE_ADMIN = 'admin';
 
@@ -218,12 +217,14 @@ class BackupService
         $this->importedFiles = [];
 
         try {
-            $summary = DB::transaction(fn () => $this->importData($user, $data));
+            // Ein Backup stellt den gesicherten Zustand wieder her, wie er war – auch
+            // Altdaten, die der Gruppenregel (GroupOwnership) noch nicht entsprechen.
+            $summary = GroupOwnership::suspended(fn () => DB::transaction(fn () => $this->importData($user, $data)));
         } catch (\Throwable $e) {
             // Die Transaktion ist zurückgerollt – bereits extrahierte Dateien
             // gehören zu keiner Datenbankzeile mehr und werden aufgeräumt.
             foreach ($this->importedFiles as $path) {
-                Storage::disk('public')->delete($path);
+                FileStorage::disk()->delete($path);
             }
 
             throw $e;
@@ -263,7 +264,7 @@ class BackupService
                     'header' => $template['header'] ?? null,
                     'footer' => $template['footer'] ?? null,
                     'is_default' => (bool) ($template['is_default'] ?? false),
-                    'header_image_path' => $this->restoreFile($template['header_image'] ?? null, self::BILLING_TEMPLATE_DIRECTORY),
+                    'header_image_path' => $this->restoreFile($template['header_image'] ?? null, FileStorage::BILLING_TEMPLATE_IMAGES),
                 ]);
             }
 
@@ -386,6 +387,7 @@ class BackupService
             'date' => $claim->date?->toDateString(),
             'booking_date' => $claim->booking_date?->toDateString(),
             'notes' => $claim->notes,
+            'file' => $this->fileEntry($claim->file_path, $claim->file_original_name),
         ])->all();
     }
 
@@ -441,6 +443,7 @@ class BackupService
                     'amount' => $transfer->amount,
                     'transfer_date' => $transfer->transfer_date?->toDateString(),
                     'comment' => $transfer->comment,
+                    'file' => $this->fileEntry($transfer->file_path, $transfer->file_original_name),
                 ])->all(),
             'maintenance_contracts' => $managementGroup->maintenanceContracts()->orderBy('id')->get()
                 ->map(fn (MaintenanceContract $contract) => [
@@ -541,6 +544,7 @@ class BackupService
             'recurrence_end' => $invoice->recurrence_end?->toDateString(),
             ...$invoice->only([
                 'amount', 'effective_amount', 'invoice_number', 'description', 'periodicity', 'disable_amount_cap',
+                'amount_segments',
             ]),
             'file' => $this->fileEntry($invoice->file_path, $invoice->file_original_name),
             'occurrences' => $invoice->occurrences()->orderBy('id')->get()
@@ -656,7 +660,7 @@ class BackupService
             BillingTemplate::create([
                 'user_group_id' => $group->id,
                 ...collect($templateData)->only(self::TEMPLATE_FIELDS)->all(),
-                'header_image_path' => $this->restoreFile($templateData['header_image'] ?? null, self::BILLING_TEMPLATE_DIRECTORY),
+                'header_image_path' => $this->restoreFile($templateData['header_image'] ?? null, FileStorage::BILLING_TEMPLATE_IMAGES),
             ]);
         }
 
@@ -756,6 +760,7 @@ class BackupService
                 ...$owner,
                 'billing_interval_id' => $billingIntervalId,
                 ...collect($claimData)->only(['amount', 'date', 'booking_date', 'notes'])->all(),
+                ...$this->restoreReceipt($claimData, FileStorage::SETTLEMENT_CLAIMS),
             ]);
         }
     }
@@ -852,6 +857,7 @@ class BackupService
                 'amount' => $transferData['amount'],
                 'transfer_date' => $transferData['transfer_date'],
                 'comment' => $transferData['comment'] ?? null,
+                ...$this->restoreReceipt($transferData, FileStorage::ACCOUNT_TRANSFERS),
             ]);
         }
 
@@ -938,7 +944,7 @@ class BackupService
         $lease->tenants()->sync($tenantIds);
 
         foreach ($data['documents'] ?? [] as $documentData) {
-            $path = $this->restoreFile($documentData, 'lease_documents');
+            $path = $this->restoreFile($documentData, FileStorage::LEASE_DOCUMENTS);
 
             if ($path === null) {
                 continue;
@@ -995,11 +1001,11 @@ class BackupService
                 : null,
             'costable_type' => $costableType,
             'costable_id' => $costableId,
-            'file_path' => $this->restoreFile($data['file'] ?? null, 'invoices'),
+            'file_path' => $this->restoreFile($data['file'] ?? null, FileStorage::INVOICES),
             'file_original_name' => $data['file']['original_name'] ?? null,
             ...collect($data)->only([
                 'amount', 'effective_amount', 'invoice_number', 'invoice_date', 'booking_date', 'description',
-                'periodicity', 'recurrence_start', 'recurrence_end', 'disable_amount_cap',
+                'periodicity', 'recurrence_start', 'recurrence_end', 'disable_amount_cap', 'amount_segments',
             ])->all(),
         ]);
         $this->invoiceMap[$data['ref']] = $invoice->id;
@@ -1102,7 +1108,7 @@ class BackupService
      */
     private function fileEntry(?string $storagePath, ?string $originalName): ?array
     {
-        if ($storagePath === null || ! Storage::disk('public')->exists($storagePath)) {
+        if ($storagePath === null || ! FileStorage::disk()->exists($storagePath)) {
             return null;
         }
 
@@ -1110,12 +1116,12 @@ class BackupService
     }
 
     /**
-     * Extracts a file entry from the import ZIP into the public disk under a
-     * fresh, collision-free name inside $directory; returns the new path.
+     * Extracts a file entry from the import ZIP into the file disk (FileStorage) under
+     * a fresh, collision-free name inside the directory of $kind; returns the new path.
      *
      * @param  array{path?: string, original_name?: ?string}|null  $entry
      */
-    private function restoreFile(?array $entry, string $directory): ?string
+    private function restoreFile(?array $entry, string $kind): ?string
     {
         if ($entry === null || empty($entry['path']) || $this->importZip === null) {
             return null;
@@ -1128,12 +1134,25 @@ class BackupService
         }
 
         $extension = pathinfo($entry['path'], PATHINFO_EXTENSION);
-        $path = $directory.'/'.Str::uuid().($extension !== '' ? ".{$extension}" : '');
+        $path = FileStorage::directory($kind).'/'.Str::uuid().($extension !== '' ? ".{$extension}" : '');
 
-        Storage::disk('public')->put($path, $contents);
+        FileStorage::disk()->put($path, $contents);
         $this->importedFiles[] = $path;
 
         return $path;
+    }
+
+    /**
+     * Beleg (file_path, file_original_name) einer Forderung bzw. Umbuchung aus dem Import.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array{file_path: ?string, file_original_name: ?string}
+     */
+    private function restoreReceipt(array $data, string $kind): array
+    {
+        $path = $this->restoreFile($data['file'] ?? null, $kind);
+
+        return ['file_path' => $path, 'file_original_name' => $path === null ? null : ($data['file']['original_name'] ?? null)];
     }
 
     /**
@@ -1156,7 +1175,7 @@ class BackupService
         $zip->addFromString('backup.json', (string) json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 
         foreach ($this->collectFilePaths($data) as $filePath) {
-            $absolute = Storage::disk('public')->path($filePath);
+            $absolute = FileStorage::disk()->path($filePath);
 
             if (is_file($absolute)) {
                 $zip->addFile($absolute, 'files/'.$filePath);

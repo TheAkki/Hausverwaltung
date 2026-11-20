@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Lease;
 use App\Models\ManagementGroup;
+use App\Models\ManagementUnit;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -37,7 +38,7 @@ class IncomeTableSummeColumnTest extends TestCase
     {
         $user = User::factory()->create();
         $this->makeLease($user);
-        $managementUnit = \App\Models\ManagementUnit::first();
+        $managementUnit = ManagementUnit::first();
 
         $response = $this->actingAs($user)->get(route('management-units.show', $managementUnit).'?income_view=tenant_unit');
 
@@ -50,7 +51,7 @@ class IncomeTableSummeColumnTest extends TestCase
     {
         $user = User::factory()->create();
         $this->makeLease($user);
-        $managementUnit = \App\Models\ManagementUnit::first();
+        $managementUnit = ManagementUnit::first();
 
         $response = $this->actingAs($user)->get(route('management-units.show', $managementUnit).'?income_view=tenant');
 
@@ -69,7 +70,7 @@ class IncomeTableSummeColumnTest extends TestCase
         $user = User::factory()->create();
         $lease = $this->makeLease($user);
         $lease->currentLeaseInterval()->update(['utility_advance_payment' => 100]);
-        $managementUnit = \App\Models\ManagementUnit::first();
+        $managementUnit = ManagementUnit::first();
 
         $response = $this->actingAs($user)->get(route('management-units.show', $managementUnit).'?income_view=tenant_split');
 
@@ -91,7 +92,7 @@ class IncomeTableSummeColumnTest extends TestCase
         $lease1 = $this->makeLease($user);
         $lease1->currentLeaseInterval()->update(['utility_advance_payment' => 100]);
 
-        $managementUnit = \App\Models\ManagementUnit::first();
+        $managementUnit = ManagementUnit::first();
         $rentalUnit2 = $managementUnit->rentalUnits()->create([
             'type' => 'Wohnung', 'size' => 40, 'is_relevant_for_billing' => true,
         ]);

@@ -9,6 +9,7 @@ use App\Models\ManagementGroup;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Services\BackupService;
+use App\Support\FileStorage;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -31,7 +32,7 @@ class BackupVisibilityTest extends TestCase
     {
         parent::setUp();
 
-        Storage::fake('public');
+        Storage::fake(FileStorage::diskName());
         config(['app.admin_email' => self::ADMIN_EMAIL]);
     }
 

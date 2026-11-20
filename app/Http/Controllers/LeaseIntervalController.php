@@ -5,11 +5,11 @@ namespace App\Http\Controllers;
 use App\Models\Lease;
 use App\Models\LeaseInterval;
 use App\Rules\DateAfterField;
+use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
-use Carbon\Carbon;
 
 /**
  * Manages lease intervals, closing the previous interval automatically when a new one starts.

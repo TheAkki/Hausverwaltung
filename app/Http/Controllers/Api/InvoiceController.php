@@ -12,6 +12,7 @@ use App\Models\ManagementUnit;
 use App\Models\RentalUnit;
 use App\Rules\DateAfterField;
 use App\Rules\SameSignAs;
+use App\Services\GroupOwnership\GroupOwnership;
 use App\Services\InvoiceReceipt;
 use App\Services\InvoiceSeries\CostableManagementGroup;
 use App\Services\InvoiceSeries\CostSegment;
@@ -21,12 +22,12 @@ use App\Services\InvoiceSeries\InvoiceBookingRecorder;
 use App\Services\InvoiceSeries\InvoiceForecastWriter;
 use App\Services\InvoiceSeries\InvoiceSeriesService;
 use App\Services\InvoiceSeries\SeriesInputResolver;
+use App\Support\FileStorage;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -174,7 +175,10 @@ class InvoiceController extends Controller
 
         if ($costCategory !== null) {
             $this->authorize('view', $costCategory);
+            GroupOwnership::assertCategoryFits($costCategory, CostableManagementGroup::of($costable));
         }
+
+        GroupOwnership::assertIssuerFits(InvoiceIssuer::findOrFail($validated['invoice_issuer_id']), CostableManagementGroup::of($costable));
 
         $invoice = Invoice::create([
             ...collect($validated)->except(['file', self::GENERATE_COSTS])->all(),
@@ -220,6 +224,7 @@ class InvoiceController extends Controller
 
         $resolver = new SeriesInputResolver(CostableManagementGroup::of($costable), $request->user(), ! $request->boolean('disable_amount_cap'));
         $segments = isset($validated['segments']) ? $resolver->segments($validated['segments'], $validated['allocations'] ?? [], 'segments') : [];
+        GroupOwnership::assertIssuerFits(InvoiceIssuer::findOrFail($validated['invoice_issuer_id']), CostableManagementGroup::of($costable));
 
         $invoice = Invoice::create([
             ...collect($validated)->except(['file', 'allocations', 'segments', 'billing_interval_id'])->all(),
@@ -359,6 +364,11 @@ class InvoiceController extends Controller
 
         $validated['disable_amount_cap'] = $request->boolean('disable_amount_cap');
 
+        // Ein Kundenaccount gehört zu genau einem Rechnungssteller (ReferenceIntegrity).
+        if ((int) $validated['invoice_issuer_id'] !== $invoice->invoice_issuer_id) {
+            $validated['invoice_issuer_account_id'] = null;
+        }
+
         $invoice->update(collect($validated)->except('file')->all());
         $this->attachUpload($request, $invoice);
 
@@ -393,9 +403,7 @@ class InvoiceController extends Controller
     {
         $this->authorize('view', $invoice);
 
-        abort_if($invoice->file_path === null || ! Storage::disk(InvoiceReceipt::DISK)->exists($invoice->file_path), 404);
-
-        return Storage::disk(InvoiceReceipt::DISK)->download($invoice->file_path, $invoice->file_original_name);
+        return FileStorage::response($invoice->file_path, $invoice->file_original_name);
     }
 
     public function destroyFile(Invoice $invoice): JsonResponse

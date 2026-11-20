@@ -7,6 +7,7 @@ use App\Models\Invoice;
 use App\Models\InvoiceIssuer;
 use App\Models\ManagementGroup;
 use App\Models\User;
+use App\Support\FileStorage;
 use Database\Seeders\CostCategorySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -19,8 +20,6 @@ use Tests\TestCase;
 class InvoiceControllerTest extends TestCase
 {
     use CreatesApiFixtures, RefreshDatabase;
-
-    private const DISK = 'public';
 
     protected function setUp(): void
     {
@@ -67,7 +66,9 @@ class InvoiceControllerTest extends TestCase
             'cost_category_id' => CostCategory::first()->id, 'amount' => 100,
             'period_date' => '2026-01-01', 'booking_date' => '2026-01-05',
         ]);
-        $this->makeInvoice(User::factory()->create(), $this->makeManagementGroup(User::factory()->create()));
+        // Rechnungssteller und Verwaltungsgruppe desselben Fremden (GroupOwnership).
+        $stranger = User::factory()->create();
+        $this->makeInvoice($stranger, $this->makeManagementGroup($stranger));
 
         $this->getJson(route('api.invoices.index'))->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $open->id);
         $this->getJson(route('api.invoices.index', ['show_completed' => 1]))->assertOk()->assertJsonCount(2, 'data');
@@ -115,7 +116,7 @@ class InvoiceControllerTest extends TestCase
 
     public function test_an_invoice_with_an_uploaded_receipt_stores_the_file(): void
     {
-        Storage::fake(self::DISK);
+        Storage::fake(FileStorage::diskName());
         $user = $this->apiUser();
         $managementGroup = $this->makeManagementGroup($user);
 
@@ -124,7 +125,7 @@ class InvoiceControllerTest extends TestCase
         ]), ['Accept' => 'application/json']);
 
         $response->assertCreated()->assertJsonPath('file_original_name', 'beleg.pdf');
-        Storage::disk(self::DISK)->assertExists(Invoice::first()->file_path);
+        FileStorage::disk()->assertExists(Invoice::first()->file_path);
     }
 
     public function test_an_invoice_issuer_of_a_foreign_group_is_forbidden(): void
@@ -205,10 +206,10 @@ class InvoiceControllerTest extends TestCase
 
     public function test_an_invoice_can_be_updated_and_its_receipt_replaced(): void
     {
-        Storage::fake(self::DISK);
+        Storage::fake(FileStorage::diskName());
         $user = $this->apiUser();
         $managementGroup = $this->makeManagementGroup($user);
-        Storage::disk(self::DISK)->put('invoices/alt.pdf', 'alt');
+        FileStorage::disk()->put('invoices/alt.pdf', 'alt');
         $invoice = $this->makeInvoice($user, $managementGroup, ['file_path' => 'invoices/alt.pdf']);
 
         $response = $this->put(route('api.invoices.update', $invoice), [
@@ -217,7 +218,7 @@ class InvoiceControllerTest extends TestCase
         ], ['Accept' => 'application/json']);
 
         $response->assertOk()->assertJsonPath('file_original_name', 'neu.pdf');
-        Storage::disk(self::DISK)->assertMissing('invoices/alt.pdf');
+        FileStorage::disk()->assertMissing('invoices/alt.pdf');
         $this->assertEquals(150, $invoice->fresh()->amount);
     }
 
@@ -246,15 +247,15 @@ class InvoiceControllerTest extends TestCase
 
     public function test_deleting_an_invoice_removes_its_receipt(): void
     {
-        Storage::fake(self::DISK);
+        Storage::fake(FileStorage::diskName());
         $user = $this->apiUser();
-        Storage::disk(self::DISK)->put('invoices/beleg.pdf', 'x');
+        FileStorage::disk()->put('invoices/beleg.pdf', 'x');
         $invoice = $this->makeInvoice($user, $this->makeManagementGroup($user), ['file_path' => 'invoices/beleg.pdf']);
 
         $this->deleteJson(route('api.invoices.destroy', $invoice))->assertNoContent();
 
         $this->assertNull(Invoice::find($invoice->id));
-        Storage::disk(self::DISK)->assertMissing('invoices/beleg.pdf');
+        FileStorage::disk()->assertMissing('invoices/beleg.pdf');
     }
 
     public function test_an_invoice_without_receipt_can_be_deleted(): void
@@ -380,7 +381,7 @@ class InvoiceControllerTest extends TestCase
 
     public function test_a_receipt_can_be_attached_replaced_downloaded_and_deleted(): void
     {
-        Storage::fake(self::DISK);
+        Storage::fake(FileStorage::diskName());
         $user = $this->apiUser();
         $invoice = $this->makeInvoice($user, $this->makeManagementGroup($user), ['amount' => -20]);
 
@@ -392,7 +393,7 @@ class InvoiceControllerTest extends TestCase
         $this->post(route('api.invoices.file.store', $invoice), [
             'file' => UploadedFile::fake()->create('neu.pdf', 10, 'application/pdf'),
         ], ['Accept' => 'application/json'])->assertOk();
-        Storage::disk(self::DISK)->assertMissing($firstPath);
+        FileStorage::disk()->assertMissing($firstPath);
 
         $download = $this->get(route('api.invoices.file.show', $invoice));
         $download->assertOk();
@@ -400,7 +401,7 @@ class InvoiceControllerTest extends TestCase
 
         $secondPath = $invoice->fresh()->file_path;
         $this->deleteJson(route('api.invoices.file.destroy', $invoice))->assertNoContent();
-        Storage::disk(self::DISK)->assertMissing($secondPath);
+        FileStorage::disk()->assertMissing($secondPath);
         $this->assertNull($invoice->fresh()->file_path);
     }
 

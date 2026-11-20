@@ -17,19 +17,19 @@ Die Oberfläche ist auf Deutsch und Englisch verfügbar.
   - Mieteingänge werden dem richtigen Monat zugeordnet.
 - **Rechnungen und Kosten:**
   - einmalige und wiederkehrende Rechnungen mit Aufteilung auf Kostenkategorien und
-    Betragsintervallen, Belege als PDF oder Bild;
+    Betragsintervallen, Belege als PDF oder Bild – auch für Forderungen und Umbuchungen;
   - tatsächliche Abbuchungen werden dem passenden Termin zugeordnet, künftige
     Beträge prognostiziert.
 - **Konten:** optionales Kontensystem mit Umbuchungen, Wartungsverträge.
-- **Übersichten:** offene Zahlungen, Ausgaben je Abrechnungszeitraum, Kontenübersicht und
-  eine Steuerübersicht (Zuflussprinzip).
+- **Übersichten:** offene Zahlungen, nicht vollständig zugeordnete Buchungen, Ausgaben je
+  Abrechnungszeitraum, Kontenübersicht und eine Steuerübersicht (Zuflussprinzip).
 - **Betriebskostenabrechnung:**
   - Umlageschlüssel nach Fläche, Personen, Mieteinheit oder individuell;
   - Leerstände, Nachzahlungen und Erstattungen;
   - PDF je Mietvertrag oder gesammelt als ZIP, Vorlagen mit Blade/HTML/CSS und
     Kopfbild, passend für DIN-5008-Fensterumschläge.
 - **Benutzer und Gruppen:** Daten gehören Benutzergruppen, Mitglieder mit den Rollen
-  Administrator oder Benutzer.
+  Administrator oder Benutzer. Hochgeladene Dateien sind nur für Mitglieder abrufbar.
 - **Backup:** Export und Import der eigenen Daten samt Dateien als ZIP.
 - **REST-API:**
   - nahezu alle Funktionen über Tokens (Laravel Sanctum);
@@ -129,6 +129,12 @@ Im Betrieb zeigt ein Webserver (nginx oder Apache mit PHP-FPM) auf den Ordner `p
 Ein Beispiel für nginx liegt in [docker/nginx/default.conf](docker/nginx/default.conf).
 Für die PDF-Abrechnung muss `storage/` für den Webserver beschreibbar sein.
 
+Hochgeladene Dateien (Belege, Mietvertragsdokumente, Kopfbilder) liegen unter
+`storage/app/private` und werden nur nach einer Berechtigungsprüfung ausgeliefert. Eine
+andere Disk lässt sich mit `HV_FILES_DISK` wählen, aber nie die öffentliche (`public`).
+Dateien einer älteren Installation, die noch unter `storage/app/public` liegen, zieht
+`php artisan migrate` automatisch um.
+
 ## Entwicklung
 
 ### Tests und Prüfungen
@@ -143,6 +149,17 @@ cd scripts/api-client               # Python-Client
 python3 -m unittest discover -s tests -t .
 flake8 .
 ```
+
+### Screenshots der Bedienungsanleitung
+
+```bash
+DOCS_CHROMIUM=/snap/bin/chromium php artisan docs:screenshots
+```
+
+Der Befehl rendert die wichtigsten Seiten mit frei erfundenen Beispieldaten auf einer
+eigenen Datenbank im Speicher – deine Daten bleiben unberührt – und fotografiert sie mit
+Chromium im Headless-Modus ab. Die Bilder landen in `resources/docs/screenshots` und
+gehören ins Repository; `php artisan docs:generate` kopiert sie zur Anleitung.
 
 ### Version veröffentlichen
 

@@ -3,10 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\CostCategory;
+use App\Services\CostCategoryCreator;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 /**
@@ -53,7 +53,7 @@ class CostCategoryController extends Controller
      * Hauptkategorie by CostCategoryObserver – whatever is submitted for those two
      * fields is ignored in that case.
      */
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, CostCategoryCreator $creator): RedirectResponse
     {
         $validated = $request->validate([
             'user_group_id' => ['required', 'integer', Rule::in($request->user()->groups->pluck('id'))],
@@ -73,20 +73,7 @@ class CostCategoryController extends Controller
             $this->authorize('view', $parent);
         }
 
-        $fullName = $parent ? $parent->name.CostCategory::SEPARATOR.$validated['name'] : $validated['name'];
-
-        if (CostCategory::where('name', $fullName)->exists()) {
-            throw ValidationException::withMessages([
-                'name' => __('Eine Kostenkategorie mit diesem Namen existiert bereits.'),
-            ]);
-        }
-
-        CostCategory::create([
-            'user_group_id' => $validated['user_group_id'],
-            'name' => $fullName,
-            'is_relevant_for_billing' => $request->boolean('is_relevant_for_billing'),
-            'is_tax_relevant' => $request->boolean('is_tax_relevant'),
-        ]);
+        $creator->create($validated, $request->boolean('is_relevant_for_billing'), $request->boolean('is_tax_relevant'), $parent);
 
         return redirect()->route('cost-categories.index');
     }

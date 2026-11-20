@@ -12,12 +12,25 @@ In einer Entwicklungsumgebung (`php artisan db:seed`) steht stattdessen ein **Ad
 
 Alternativ kannst du dich über **Registrieren** einen eigenen Account anlegen. Dafür werden ein Name, eine gültige E-Mail-Adresse und ein Passwort benötigt. Beim Anlegen wird automatisch eine eigene Benutzergruppe („Gruppe von [Name]“) erzeugt, in der du als Administrator eingetragen bist.
 
+Die Bilder in dieser Anleitung zeigen frei erfundene Beispieldaten.
+
+![Übersicht nach dem Anmelden](screenshots/dashboard.png)
+
 ## Benutzer und Gruppen
 
 - Unter **Benutzer** siehst du alle Nutzer, mit denen du gemeinsam in einer Gruppe bist.
 - Unter **Gruppen** kannst du neue Benutzergruppen anlegen und – als Besitzer – wieder löschen.
 - Innerhalb einer Gruppe kannst du als Administrator weitere Mitglieder hinzufügen, entfernen oder zu Administratoren machen.
 - Ein Benutzer kann sich selbst nicht löschen und auch keine anderen Benutzer löschen.
+
+### Gemeinsame Gruppen und ihre Daten
+
+Vermietest du ein Haus gemeinsam mit anderen, legst du dafür eine eigene Gruppe an und ordnest ihr die Verwaltungsgruppe zu. Damit die Mitglieder nur sehen, was zu diesem Haus gehört, gilt:
+
+- **Mieter, Rechnungssteller und eigene Kategorien gehören zur Gruppe ihrer Verwaltungsgruppe.** Lege sie gleich in der gemeinsamen Gruppe an. Mieter oder Rechnungssteller aus deiner persönlichen Gruppe lassen sich dort nicht verwenden – die Anwendung meldet das am betroffenen Feld.
+- **Rechnungssteller kopieren:** Brauchst du denselben Rechnungssteller in zwei Gruppen, kopiere ihn auf seiner Detailseite mit „In andere Gruppe kopieren“ – samt Kundenaccounts.
+- **Gruppe wechseln:** Ordnest du eine Verwaltungsgruppe einer anderen Gruppe zu, ziehen ihre Mieter, Rechnungssteller und Kategorien mit um. Was auch eine andere Verwaltungsgruppe verwendet, wird kopiert. Die Standardvorlage der Abrechnung wird in die neue Gruppe kopiert. Nach dem Speichern zeigt die Seite, was verschoben und was kopiert wurde.
+- **Kategorienamen** sind je Gruppe eindeutig; „Lohnkosten“ darf es also in deiner persönlichen und in der gemeinsamen Gruppe geben.
 
 ## Verwaltungsstruktur
 
@@ -28,6 +41,8 @@ Die Verwaltung ist dreistufig aufgebaut:
 3. **Mieteinheit** – eine einzelne vermietbare Einheit (Wohnung, Garage, Stellplatz) innerhalb einer Verwaltungseinheit, mit Größe und Angabe, ob sie für die Betriebskostenabrechnung relevant ist.
 
 Du siehst dabei immer nur die Verwaltungsgruppen, -einheiten und Mieteinheiten, die einer deiner Benutzergruppen zugeordnet sind.
+
+![Detailbild einer Verwaltungsgruppe](screenshots/verwaltungsgruppe.png)
 
 Im Detailbild einer Verwaltungseinheit findest du unterhalb der Mieteinheiten-Tabelle eine ein- und ausklappbare **Belegungsmatrix** (standardmäßig eingeklappt, klappt sich beim Wechsel des Jahres automatisch auf), die pro Mieteinheit und Monat anzeigt, ob und von wem (per Tooltip) sie im gewählten Jahr belegt war.
 
@@ -42,6 +57,10 @@ Die **Mieteinnahmen**-Tabelle lässt sich zwischen drei Gruppierungen umschalten
 - Weitere Mietintervalle (z. B. bei Staffel- oder Indexmieten oder bei einer Änderung der Personenzahl) legst du manuell an; das vorherige Intervall wird dabei automatisch zum Vortag des neuen Startdatums geschlossen.
 - In der Übersicht **Mietverträge** werden abgelaufene Verträge ausgegraut dargestellt. Ein Klick auf die Mieteinheit zeigt die zugehörigen Mietintervalle; ein Klick auf ein Intervall öffnet dessen Bearbeitung.
 
+![Übersicht der Mietverträge](screenshots/mietvertraege.png)
+
+![Detailbild eines Mietvertrags mit Mietintervallen und Forderungen](screenshots/mietvertrag.png)
+
 ## Rechnungen, Rechnungssteller und Kosten
 
 - **Rechnungssteller** (z. B. Versorger, Handwerker) werden mit Name, Adresse, optional Anrede, Firma, E-Mail, Telefon, Mobilfunk, IBAN, BIC und Kommentar angelegt. Ein Rechnungssteller kann mehrere **Kundenaccounts** haben (z. B. getrennte Accounts für Strom, Wasser oder Fernwärme bei einem Versorger), jeweils mit Kundennummer, optionaler Beschreibung und Lastschrift-Kennzeichen.
@@ -49,7 +68,12 @@ Die **Mieteinnahmen**-Tabelle lässt sich zwischen drei Gruppierungen umschalten
 - Rechnungen können auch für wiederkehrende Abbuchungen stehen: einmalig (Standard), wöchentlich, 2-wöchentlich, monatlich, quartalsweise, jährlich oder mit händisch erfassten Einzelterminen samt Beträgen.
 - Innerhalb einer Rechnung ordnest du die Kosten zu: zuerst wählst du die Verwaltungsgruppe, -einheit oder Mieteinheit, danach das passende Abrechnungsintervall sowie die Kostenkategorie. Die Summe der Kosten darf den (wirksamen) Rechnungsbetrag nicht übersteigen. Diese Zuordnung ist der Wirkungsrahmen der Rechnung und wird in der Rechnungsübersicht als „Zugeordnet zu" angezeigt.
 - Pro Verwaltungsgruppe kann je Kostenkategorie ein **Abrechnungsschlüssel** festgelegt werden (z. B. nach Fläche, Personenzahl oder individuell).
+- **Belege:** An Rechnungen hängst du die Rechnung als Datei (PDF, Word oder Bild bis 10 MB). Auch **Forderungen** (Nachzahlung oder Rückzahlung aus der Abrechnung) und **Umbuchungen** zwischen Konten können einen Beleg haben – beim Anlegen oder später. Belege sind nur für Mitglieder der Gruppe abrufbar, nie über einen öffentlichen Link.
 - **Kostenzuweisung:** Hat eine Kategorie den Abrechnungsschlüssel **„Individuell"**, kann eine Kostenzeile bei der Zuordnung zusätzlich direkt einem **Mietvertrag** zugewiesen werden (in der Auswahlliste als „––– Mietername (Mieteinheit)" erkennbar). Solche Kosten gehen nicht in die Kontensystem-Bilanzierung ein und können keinem Konto zugeordnet werden, da sie nur extern (außerhalb des Kontensystems) ermittelt wurden – bei aktivem Kontensystem steht für sie deshalb kein Konto-Feld zur Verfügung.
+
+![Übersicht der Rechnungen](screenshots/rechnungen.png)
+
+![Eine Rechnung anlegen](screenshots/rechnung-anlegen.png)
 
 ## Wartungsverträge
 
@@ -59,6 +83,12 @@ Unter **Wartungsverträge** hinterlegst du wiederkehrende Verträge wie Rauchwar
 
 - Im Detailbild einer **Verwaltungseinheit** findest du die monatlichen Mieteinnahmen (Kaltmiete + Betriebskostenvorauszahlung je Mieter und Monat) sowie die Ausgaben gruppiert nach Kategorie – umschaltbar nach Jahr.
 - Im Detailbild einer **Verwaltungsgruppe** stehen die Einnahmen gruppiert nach Mieteinheitstyp sowie die Ausgaben gruppiert nach Kategorie (inklusive der Kosten untergeordneter Verwaltungseinheiten und Mieteinheiten) zur Verfügung.
+- **Offene Zahlungen** listet alle Ausgaben und Mieteinnahmen, deren Termin erreicht, die aber noch nicht gebucht sind.
+- **Nicht zugeordnet** listet jeden Termin einer Rechnung bis heute, bei dem die Summe der Kostenzeilen nicht dem Rechnungsbetrag entspricht – etwa wenn ein Teil der Rechnung noch keiner Kategorie zugeordnet ist. Bei Rechnungen mit Betragsintervallen (z. B. einer Lohnerhöhung) gilt der Betrag des jeweiligen Intervalls. Rechnungen mit deaktiviertem Betragsdeckel fehlen hier.
+
+![Offene Zahlungen](screenshots/offene-zahlungen.png)
+
+![Nicht zugeordnete Buchungen](screenshots/nicht-zugeordnet.png)
 
 ## Betriebskostenabrechnung
 
@@ -66,6 +96,8 @@ Unter **Wartungsverträge** hinterlegst du wiederkehrende Verträge wie Rauchwar
 - Ein Template enthält ein Anschreiben nach DIN 5008 mit Angaben zu Mieter, Verwaltungsgruppe, -einheit und Mieteinheit sowie zum Abrechnungsintervall und zur Mietdauer darin. Kopf- und Fußzeile inklusive Bild lassen sich frei gestalten.
 - Das Standard-Template enthält zusätzlich eine Übersicht der monatlich angefallenen Nebenkosten innerhalb des Abrechnungsintervalls.
 - Für jede Verwaltungseinheit und jedes Abrechnungsintervall kann die Abrechnung angezeigt und als PDF exportiert werden – Kopf-Bild und alle anderen Inhalte funktionieren dabei identisch in der HTML-Vorschau wie im PDF-Export.
+
+![Betriebskostenabrechnung einer Verwaltungseinheit](screenshots/betriebskostenabrechnung.png)
 - Der auf einen Mietvertrag entfallende Kostenanteil wird mehrstufig berechnet: Kosten, die auf Ebene der Verwaltungsgruppe, der Verwaltungseinheit oder direkt auf einem Mietvertrag (bei „Individuell"-Kategorien) gebucht wurden, werden je nach Abrechnungsschlüssel der Kategorie (Fläche, Personen oder individuell) anteilig zugerechnet und zu einer Gesamtsumme je Mietvertrag addiert. Details zur genauen Berechnung stehen auf der Seite „Hilfe: Templates schreiben".
 
 ### Templates und Benutzergruppen

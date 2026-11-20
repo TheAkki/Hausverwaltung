@@ -5,20 +5,18 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\CostCategory;
 use App\Models\ManagementGroup;
+use App\Services\CostCategoryCreator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\ValidationException;
 
 /**
  * REST-API für Kostenkategorien, gespiegelt von CostCategoryController und
  * ManagementGroupCostCategoryController (Abrechnungsschlüssel je
  * Verwaltungsgruppe).
  *
- * Abweichend vom Web prüft store() die Eindeutigkeit des Namens nur unter den für
- * den Benutzer sichtbaren Kategorien (systemweit + eigene Gruppen) – wie der
- * Seeder und der Backup-Import, die gleichnamige Kategorien verschiedener Accounts
- * zulassen.
+ * Anlegen wie im Web über CostCategoryCreator: ein Name ist innerhalb der Gruppe
+ * (samt Systemkategorien) eindeutig.
  */
 class CostCategoryController extends Controller
 {
@@ -34,7 +32,7 @@ class CostCategoryController extends Controller
         return response()->json(CostCategory::visibleTo($request->user())->orderBy('name')->get());
     }
 
-    public function store(Request $request): JsonResponse
+    public function store(Request $request, CostCategoryCreator $creator): JsonResponse
     {
         $validated = $request->validate([
             'user_group_id' => ['required', 'integer', Rule::in($request->user()->groups->pluck('id'))],
@@ -48,20 +46,13 @@ class CostCategoryController extends Controller
             'is_tax_relevant' => ['boolean'],
         ]);
 
-        $fullName = $this->fullName($validated);
-
-        if (CostCategory::visibleTo($request->user())->where('name', $fullName)->exists()) {
-            throw ValidationException::withMessages([
-                'name' => __('Eine Kostenkategorie mit diesem Namen existiert bereits.'),
-            ]);
+        $parent = null;
+        if (! empty($validated['parent_id'])) {
+            $parent = CostCategory::findOrFail($validated['parent_id']);
+            $this->authorize('view', $parent);
         }
 
-        $category = CostCategory::create([
-            'user_group_id' => $validated['user_group_id'],
-            'name' => $fullName,
-            'is_relevant_for_billing' => $request->boolean('is_relevant_for_billing'),
-            'is_tax_relevant' => $request->boolean('is_tax_relevant'),
-        ]);
+        $category = $creator->create($validated, $request->boolean('is_relevant_for_billing'), $request->boolean('is_tax_relevant'), $parent);
 
         return response()->json($category, 201);
     }
@@ -103,20 +94,5 @@ class CostCategoryController extends Controller
         ]);
 
         return response()->json($managementGroup->costCategories()->get());
-    }
-
-    /**
-     * @param  array<string, mixed>  $validated
-     */
-    private function fullName(array $validated): string
-    {
-        if (empty($validated['parent_id'])) {
-            return $validated['name'];
-        }
-
-        $parent = CostCategory::findOrFail($validated['parent_id']);
-        $this->authorize('view', $parent);
-
-        return $parent->name.CostCategory::SEPARATOR.$validated['name'];
     }
 }

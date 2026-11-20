@@ -21,7 +21,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * nie beide, nie keines – enforced in SettlementClaimController, not by a DB
  * constraint.
  */
-#[Fillable(['lease_id', 'rental_unit_id', 'billing_interval_id', 'amount', 'date', 'booking_date', 'notes'])]
+#[Fillable(['lease_id', 'rental_unit_id', 'billing_interval_id', 'amount', 'date', 'booking_date', 'notes', 'file_path', 'file_original_name'])]
 class SettlementClaim extends Model
 {
     use HasFactory;

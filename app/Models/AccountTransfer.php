@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * A booking-neutral transfer of money between two Konten of the same ManagementGroup.
  * Does not affect the P&L, only the balance of the two involved accounts.
  */
-#[Fillable(['from_account_id', 'to_account_id', 'amount', 'transfer_date', 'comment'])]
+#[Fillable(['from_account_id', 'to_account_id', 'amount', 'transfer_date', 'comment', 'file_path', 'file_original_name'])]
 class AccountTransfer extends Model
 {
     use HasFactory;

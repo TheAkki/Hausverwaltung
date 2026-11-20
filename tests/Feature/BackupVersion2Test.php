@@ -15,6 +15,7 @@ use App\Models\SettlementClaim;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Services\BackupService;
+use App\Support\FileStorage;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -39,7 +40,7 @@ class BackupVersion2Test extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        Storage::fake('public');
+        Storage::fake(FileStorage::diskName());
         config(['app.admin_email' => self::ADMIN_EMAIL]);
         $this->user = User::factory()->create();
         $this->managementGroup = $this->buildStructure();
@@ -48,7 +49,7 @@ class BackupVersion2Test extends TestCase
     private function buildStructure(): ManagementGroup
     {
         $group = $this->user->groups()->first();
-        Storage::disk('public')->put('billing-templates/kopf.png', 'PNG');
+        FileStorage::disk()->put('billing-templates/kopf.png', 'PNG');
         $template = BillingTemplate::create([
             'user_group_id' => $group->id, 'name' => 'Eigene Vorlage', 'content' => 'x', 'css_content' => 'p{}',
             'header_image_path' => 'billing-templates/kopf.png',
@@ -143,7 +144,7 @@ class BackupVersion2Test extends TestCase
         $this->assertSame('MG-Vermieter', $imported->landlord->name);
         $this->assertSame('Eigene Vorlage', $imported->defaultBillingTemplate->name);
         $this->assertSame($imported->user_group_id, $imported->defaultBillingTemplate->user_group_id);
-        Storage::disk('public')->assertExists($imported->defaultBillingTemplate->header_image_path);
+        FileStorage::disk()->assertExists($imported->defaultBillingTemplate->header_image_path);
         $this->assertSame('Konto-Vermieter', Landlord::where('user_group_id', $imported->user_group_id)->value('name'));
         $this->assertFalse(CostCategory::where('user_group_id', $imported->user_group_id)->where('name', 'Eigene Kategorie')->firstOrFail()->is_tax_relevant);
 

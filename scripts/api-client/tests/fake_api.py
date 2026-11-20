@@ -90,6 +90,8 @@ class FakeApi:
                 (r"/leases", self.create_lease), (r"/lease-intervals", self.creator("lease-intervals")),
                 (r"/settlement-claims", self.creator("settlement-claims")), (r"/invoices", self.create_invoice),
                 (r"/invoices/(\d+)/file", self.attach_file), (r"/invoices/(\d+)/series", self.extend_series),
+                (r"/settlement-claims/(\d+)/file", self.file_attacher("settlement-claims")),
+                (r"/account-transfers/(\d+)/file", self.file_attacher("transfers")),
                 (r"/invoices/(\d+)/bookings", self.book), (r"/leases/(\d+)/rent-payments/book", self.book_rent),
             ],
             "PUT": [
@@ -225,11 +227,17 @@ class FakeApi:
                                       "file_path": None, "costs": [{"id": 0}]})
 
     def attach_file(self, invoice_id, body, query, files):
-        invoice = self._get("invoices", invoice_id)
-        invoice["file_path"] = f"invoices/{self.next_id}.bin"
-        invoice["file_original_name"] = files["file"][0]
-        self.next_id += 1
-        return invoice
+        return self.file_attacher("invoices")(invoice_id, body, query, files)
+
+    # KI-generiert
+    def file_attacher(self, kind):
+        def attach(record_id, body, query, files):
+            record = self._get(kind, record_id)
+            record["file_path"] = f"{kind}/{self.next_id}.bin"
+            record["file_original_name"] = files["file"][0]
+            self.next_id += 1
+            return record
+        return attach
 
     def extend_series(self, invoice_id, body, query, files):
         invoice = self._get("invoices", invoice_id)

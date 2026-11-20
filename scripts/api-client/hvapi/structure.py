@@ -144,14 +144,19 @@ class Structure(Base):
                 outcome = UPDATED
         return outcome
 
-    def settlement_claim(self, lease: Record, billing_interval: Record, date: str, amount: float, **fields) -> Record:
-        """Forderung aus der Betriebskostenabrechnung (positiv = Nachzahlung)."""
-        return self.session.ensure(
+    def settlement_claim(self, lease: Record, billing_interval: Record, date: str, amount: float,
+                         file: str | None = None, **fields) -> Record:
+        """Forderung aus der Betriebskostenabrechnung (positiv = Nachzahlung); ``file`` ist
+        ein Beleg, relativ zur Datendatei."""
+        record = self.session.ensure(
             "Forderung", f"{lease.label}: {date}", [lease, billing_interval],
             find=lambda: self._find_claim(lease, billing_interval, date),
             create=lambda: self.client.post("/settlement-claims", {
                 **fields, "lease_id": lease.id, "billing_interval_id": billing_interval.id, "date": date, "amount": amount}),
         )
+        if file is not None:
+            self.attach_file(record, file)
+        return record
 
     def _find_claim(self, lease: Record, billing_interval: Record, date: str) -> dict | None:
         claims = self.session.get(f"/leases/{lease.id}").get("settlement_claims") or []
@@ -159,15 +164,19 @@ class Structure(Base):
                      if claim.get("billing_interval_id") == billing_interval.id and date_only(claim.get("date")) == date), None)
 
     def transfer(self, management_group: Record, source: Record, target: Record, transfer_date: str, amount: float,
-                 comment: str | None = None) -> Record:
-        """Umbuchung zwischen zwei Konten derselben Verwaltungsgruppe."""
-        return self.session.ensure(
+                 comment: str | None = None, file: str | None = None) -> Record:
+        """Umbuchung zwischen zwei Konten derselben Verwaltungsgruppe; ``file`` ist ein
+        Beleg, relativ zur Datendatei."""
+        record = self.session.ensure(
             "Umbuchung", f"{source.label} → {target.label} {transfer_date}", [management_group, source, target],
             find=lambda: self._find_transfer(management_group, source, target, transfer_date, amount),
             create=lambda: self._created_in(f"/management-groups/{management_group.id}", "/account-transfers", {
                 "management_group_id": management_group.id, "from_account_id": source.id, "to_account_id": target.id,
                 "transfer_date": transfer_date, "amount": amount, "comment": comment}),
         )
+        if file is not None:
+            self.attach_file(record, file)
+        return record
 
     def _find_transfer(self, management_group: Record, source: Record, target: Record, transfer_date: str, amount: float):
         account = next((a for a in self._details(management_group).get("accounts") or [] if a["id"] == source.id), {})

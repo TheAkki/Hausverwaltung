@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AccountTransfer;
 use App\Models\BillingTemplate;
 use App\Models\CostCategory;
 use App\Models\ManagementGroup;
 use App\Services\FinancialOverviewService;
+use App\Services\GroupOwnership\ManagementGroupTransfer;
 use App\Services\InvoiceSeries\ForecastRefresher;
 use App\Services\RentPaymentGenerator;
 use Illuminate\Http\RedirectResponse;
@@ -19,6 +21,9 @@ use Illuminate\View\View;
  */
 class ManagementGroupController extends Controller
 {
+    /** Session-Schlüssel für die Meldung, welche Stammdaten beim Verschieben mitkamen. */
+    public const TRANSFER_REPORT = 'management_group_transfer';
+
     public function __construct()
     {
         $this->authorizeResource(ManagementGroup::class, 'managementGroup');
@@ -124,9 +129,15 @@ class ManagementGroupController extends Controller
         // same page did.
         $occupancyPlanOpen = $request->has('plan');
 
+        // Umbuchungen zwischen den Konten, neueste zuerst – mit Beleg (RecordReceipt).
+        $transfers = AccountTransfer::whereIn('from_account_id', $managementGroup->accounts->pluck('id'))
+            ->with('fromAccount', 'toAccount')
+            ->orderByDesc('transfer_date')->orderByDesc('id')
+            ->get();
+
         return view('management-groups.show', compact(
             'managementGroup', 'billingIntervals', 'costCategories', 'year', 'income', 'bookedIncome',
-            'expenses', 'bookedExpenses', 'occupancyPlan', 'occupancyPlanOpen', 'bookingsByInterval'
+            'expenses', 'bookedExpenses', 'occupancyPlan', 'occupancyPlanOpen', 'bookingsByInterval', 'transfers'
         ));
     }
 
@@ -136,7 +147,7 @@ class ManagementGroupController extends Controller
     public function edit(Request $request, ManagementGroup $managementGroup): View
     {
         $userGroups = $request->user()->groups;
-        $billingTemplates = BillingTemplate::orderBy('name')->get();
+        $billingTemplates = BillingTemplate::visibleTo($request->user())->orderBy('name')->get();
 
         return view('management-groups.edit', compact('managementGroup', 'userGroups', 'billingTemplates'));
     }
@@ -144,7 +155,7 @@ class ManagementGroupController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, ManagementGroup $managementGroup, ForecastRefresher $forecastRefresher): RedirectResponse
+    public function update(Request $request, ManagementGroup $managementGroup, ForecastRefresher $forecastRefresher, ManagementGroupTransfer $transfer): RedirectResponse
     {
         $validated = $request->validate([
             'description' => ['nullable', 'string'],
@@ -164,13 +175,18 @@ class ManagementGroupController extends Controller
         // it untouched.
         $forecastModeChanged = $validated['variable_cost_forecast_mode'] !== $managementGroup->variable_cost_forecast_mode;
 
-        $managementGroup->update($validated);
+        // Ein Wechsel der Benutzergruppe nimmt die Stammdaten mit (ManagementGroupTransfer).
+        $templateBefore = $managementGroup->default_billing_template_id;
+        $report = $transfer->move($managementGroup, (int) $validated['user_group_id']);
+        $validated = $transfer->keepMovedTemplate($validated, $templateBefore, $managementGroup);
+        $managementGroup->update(collect($validated)->except('user_group_id')->all());
 
         if ($forecastModeChanged) {
             $forecastRefresher->refreshManagementGroup($managementGroup);
         }
 
-        return redirect()->route('management-groups.show', $managementGroup);
+        return redirect()->route('management-groups.show', $managementGroup)
+            ->with(self::TRANSFER_REPORT, $report->lines());
     }
 
     /**

@@ -6,6 +6,7 @@ namespace Tests\Feature\Api;
 
 use App\Models\CostCategory;
 use App\Models\Invoice;
+use App\Models\InvoiceIssuer;
 use App\Models\ManagementGroup;
 use App\Models\RentPayment;
 use App\Models\User;
@@ -124,13 +125,31 @@ class InvoiceSeriesApiTest extends TestCase
     }
 
     // KI-generiert
-    public function test_categories_of_another_own_group_stay_usable_after_moving_the_management_group(): void
+    // KI-generiert: Eine eigene Kategorie der persönlichen Gruppe passt nicht in eine
+    // Verwaltungsgruppe der gemeinsamen Gruppe (GroupOwnership) – deren Kopie schon.
+    public function test_a_category_of_another_own_group_is_rejected_but_its_copy_in_the_group_is_accepted(): void
     {
         $own = CostCategory::create(['name' => 'Lohnkosten', 'user_group_id' => $this->groupOf($this->user)->id, 'is_relevant_for_billing' => false]);
         $shared = $this->postJson(route('api.groups.store'), ['name' => 'Gemeinsam'])->json('id');
         $this->managementGroup->update(['user_group_id' => $shared]);
+        $issuer = InvoiceIssuer::create(['user_group_id' => $shared, 'name' => 'Bank', 'street' => 'S', 'postal_code' => '1', 'city' => 'A']);
+        $copy = CostCategory::create(['name' => 'Lohnkosten', 'user_group_id' => $shared, 'is_relevant_for_billing' => false]);
 
-        $this->postJson(route('api.invoices.store'), $this->loan(['allocations' => [['cost_category_id' => $own->id]]]))->assertCreated();
+        $this->postJson(route('api.invoices.store'), $this->loan(['invoice_issuer_id' => $issuer->id, 'allocations' => [['cost_category_id' => $own->id]]]))
+            ->assertUnprocessable()->assertJsonValidationErrors('allocations.0.cost_category_id');
+        $this->postJson(route('api.invoices.store'), $this->loan(['invoice_issuer_id' => $issuer->id, 'allocations' => [['cost_category_id' => $copy->id]]]))
+            ->assertCreated();
+    }
+
+    // KI-generiert
+    public function test_an_issuer_of_another_own_group_is_rejected(): void
+    {
+        $shared = $this->postJson(route('api.groups.store'), ['name' => 'Gemeinsam'])->json('id');
+        $this->managementGroup->update(['user_group_id' => $shared]);
+
+        $this->postJson(route('api.invoices.store'), $this->loan(['allocations' => [['cost_category_id' => $this->interest->id]]]))
+            ->assertUnprocessable()->assertJsonValidationErrors('invoice_issuer_id');
+        $this->assertSame(0, Invoice::count());
     }
 
     // KI-generiert
@@ -155,6 +174,36 @@ class InvoiceSeriesApiTest extends TestCase
 
         $this->assertSame(100.0, (float) $invoice->amount);
         $this->assertSame(['Tarif alt', 'Tarif alt', 'Tarif neu'], $invoice->costs()->orderBy('period_date')->pluck('note')->all());
+    }
+
+    // KI-generiert
+    public function test_segments_are_remembered_and_an_extension_replaces_them_from_its_start(): void
+    {
+        $payload = $this->loan(['allocations' => [['cost_category_id' => $this->interest->id]], 'segments' => [
+            ['start_date' => '2026-01-01', 'end_date' => '2026-02-28', 'amount' => 100],
+            ['start_date' => '2026-03-01', 'amount' => 110],
+        ]]);
+        unset($payload['amount'], $payload['recurrence_start'], $payload['recurrence_end']);
+        $invoice = Invoice::findOrFail($this->postJson(route('api.invoices.store'), $payload)->assertCreated()->json('id'));
+
+        $this->assertSame([
+            ['start_date' => '2026-01-01', 'end_date' => '2026-02-28', 'amount' => 100],
+            ['start_date' => '2026-03-01', 'end_date' => null, 'amount' => 110],
+        ], $invoice->amount_segments);
+        $this->assertSame(110.0, $invoice->expectedAmountOn('2026-05-01'));
+        $this->assertSame(100.0, $invoice->expectedAmountOn('2026-02-01'));
+
+        $this->postJson(route('api.invoices.series.store', $invoice), [
+            'allocations' => [['cost_category_id' => $this->interest->id]],
+            'segments' => [['start_date' => '2026-06-01', 'end_date' => '2026-08-01', 'amount' => 130]],
+        ])->assertOk();
+
+        $this->assertSame([
+            ['start_date' => '2026-01-01', 'end_date' => '2026-02-28', 'amount' => 100],
+            ['start_date' => '2026-03-01', 'end_date' => '2026-05-31', 'amount' => 110],
+            ['start_date' => '2026-06-01', 'end_date' => '2026-08-01', 'amount' => 130],
+        ], $invoice->fresh()->amount_segments);
+        $this->assertSame((float) $invoice->amount, $invoice->fresh()->expectedAmountOn('2025-12-01'));
     }
 
     // KI-generiert

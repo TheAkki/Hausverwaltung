@@ -30,6 +30,9 @@
                     <x-nav-link :href="route('open-payments.index')" :active="request()->routeIs('open-payments.*')">
                         {{ __('Offene Zahlungen') }}
                     </x-nav-link>
+                    <x-nav-link :href="route('unassigned-bookings.index')" :active="request()->routeIs('unassigned-bookings.*')">
+                        {{ __('Nicht zugeordnet') }}
+                    </x-nav-link>
                 </div>
             </div>
 
@@ -130,6 +133,9 @@
             </x-responsive-nav-link>
             <x-responsive-nav-link :href="route('open-payments.index')" :active="request()->routeIs('open-payments.*')">
                 {{ __('Offene Zahlungen') }}
+            </x-responsive-nav-link>
+            <x-responsive-nav-link :href="route('unassigned-bookings.index')" :active="request()->routeIs('unassigned-bookings.*')">
+                {{ __('Nicht zugeordnet') }}
             </x-responsive-nav-link>
             <x-responsive-nav-link :href="route('invoice-issuers.index')" :active="request()->routeIs('invoice-issuers.*')">
                 {{ __('Rechnungssteller') }}

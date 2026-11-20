@@ -4,9 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\Lease;
 use App\Models\LeaseDocument;
+use App\Support\FileStorage;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * Handles uploading and removing LeaseDocuments (e.g. the signed contract PDF)
@@ -22,10 +22,10 @@ class LeaseDocumentController extends Controller
         $this->authorize('update', $lease);
 
         $validated = $request->validate([
-            'file' => ['required', 'file', 'max:10240', 'mimes:pdf,doc,docx,jpg,jpeg,png'],
+            'file' => ['required', ...FileStorage::uploadRules()],
         ]);
 
-        $path = $validated['file']->store('lease-documents', 'public');
+        $path = FileStorage::store($validated['file'], FileStorage::LEASE_DOCUMENTS);
 
         $lease->documents()->create([
             'file_path' => $path,
@@ -42,7 +42,7 @@ class LeaseDocumentController extends Controller
     {
         $this->authorize('update', $leaseDocument->lease);
 
-        Storage::disk('public')->delete($leaseDocument->file_path);
+        FileStorage::delete($leaseDocument->file_path);
 
         $lease = $leaseDocument->lease;
         $leaseDocument->delete();

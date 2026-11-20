@@ -2,7 +2,6 @@
 
 namespace Tests\Unit;
 
-use App\Models\BillingInterval;
 use App\Models\BillingTemplate;
 use App\Models\Group;
 use App\Models\Invoice;

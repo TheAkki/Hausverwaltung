@@ -109,12 +109,12 @@ def importieren(hv):
 | `management_unit(vg, straße, plz, ort)` | Haus | Anschrift |
 | `rental_unit(haus, typ, beschreibung, …)` | Wohnung, Garage, Stellplatz | Typ und Beschreibung |
 | `lease(einheit, beginn, tenants=[…] oder coupled_to=…, intervals=[…])` | Mietvertrag mit Mietintervallen | Mieteinheit und Beginn |
-| `settlement_claim(vertrag, abrechnungsjahr, datum, betrag)` | Nachzahlung (+) oder Erstattung (−) | Abrechnungsjahr und Datum |
-| `transfer(vg, von_konto, nach_konto, datum, betrag)` | Umbuchung | Konten, Datum, Betrag |
+| `settlement_claim(vertrag, abrechnungsjahr, datum, betrag, file=…)` | Nachzahlung (+) oder Erstattung (−), optional mit Beleg | Abrechnungsjahr und Datum |
+| `transfer(vg, von_konto, nach_konto, datum, betrag, file=…)` | Umbuchung, optional mit Beleg | Konten, Datum, Betrag |
 | `invoice(rechnungssteller, zuordnung, datum, wiederholung, …)` | Rechnung, siehe unten | Rechnungssteller, Zuordnung, Datum, Betrag, Beschreibung |
 | `bookings(rechnung, [(datum, betrag oder [(kategorie, betrag)])])` | tatsächliche Abbuchungen | – (erneut senden ändert nichts) |
 | `rent_payments(vertrag, [datum, …])` | eingegangene Mieten | – (erneut senden ändert nichts) |
-| `move_management_group(vg, gruppe, default_billing_template=…)` | Verwaltungsgruppe in eine gemeinsame Gruppe verschieben | – |
+| `move_management_group(vg, gruppe, default_billing_template=…)` | Verwaltungsgruppe in eine gemeinsame Gruppe verschieben und ihre Standardvorlage setzen; liegt sie schon dort, wird nur die Vorlage gesetzt | – |
 
 ### Rechnungen
 
@@ -139,7 +139,9 @@ def importieren(hv):
 - **Beleg** (`file`): Pfad zu einer PDF-, Word- oder Bilddatei (bis 10 MB), relativ zur
   Datendatei. Das Script lädt den Beleg direkt nach dem Anlegen hoch. Hat die Rechnung
   schon einen Beleg mit diesem Dateinamen, bleibt er; eine Datei mit anderem Namen
-  ersetzt ihn. `attach_file(rechnung, pfad)` hängt einen Beleg auch nachträglich an.
+  ersetzt ihn. `attach_file(datensatz, pfad)` hängt einen Beleg auch nachträglich an –
+  an eine Rechnung, Forderung oder Umbuchung. Forderungen und Umbuchungen nehmen
+  ebenfalls `file` an.
 - **Abbuchungen** (`bookings`):
   - Jede Abbuchung wird dem nächstgelegenen Termin zugeordnet. Ein paar Tage früher
     oder später ist kein Problem.
@@ -163,9 +165,19 @@ Monatswechsel zählt für den Folgemonat. Maßgeblich ist der Tag des Mietbeginn
   eingerichtet. So erzeugt ein Tippfehler im Namen keine neue Gruppe.
 - **Mitglieder:** Weitere Mitglieder trägt der Administrator ein (`admin.group(...)`)
   oder du selbst im Web unter **Gruppen**.
-- **Reihenfolge:** Lege die Verwaltungsgruppe zuerst in deiner eigenen Gruppe an und
-  importiere alles. Verschiebe sie danach mit `move_management_group` in die
-  gemeinsame Gruppe. Eigene Kategorien bleiben dabei nutzbar.
+- **Stammdaten gehören zur Gruppe:** Mieter, Rechnungssteller und eigene Kategorien
+  gehören zur selben Gruppe wie die Verwaltungsgruppe, in der du sie verwendest. Sonst
+  sähen die Mitglieder der gemeinsamen Gruppe Daten deiner persönlichen Gruppe. Die API
+  lehnt eine Mischung ab (422). Lege deshalb für eine gemeinsame Verwaltungsgruppe
+  auch ihre Mieter, Rechnungssteller und Kategorien gleich in der gemeinsamen Gruppe
+  an. Brauchst du einen Rechnungssteller in beiden Gruppen, legst du ihn in jeder
+  Gruppe an. [beispiel/meine_daten.py](beispiel/meine_daten.py) zeigt das: Es holt
+  zuerst die gemeinsame Gruppe und legt alles dort an.
+- **Verschieben:** `move_management_group` nimmt Mieter, Rechnungssteller und eigene
+  Kategorien mit. Was auch eine andere Verwaltungsgruppe verwendet, wird in die neue
+  Gruppe kopiert. Ein späterer Lauf sucht Mieter und Rechnungssteller in der Gruppe, die
+  du ihnen übergibst. Übergib danach also die gemeinsame Gruppe, sonst legt der Lauf sie
+  in der alten Gruppe neu an.
 
 ## Für den Administrator
 

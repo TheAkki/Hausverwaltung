@@ -4,6 +4,8 @@ namespace App\Observers;
 
 use App\Models\BillingInterval;
 use App\Models\ManagementGroup;
+use App\Services\GroupOwnership\GroupOwnership;
+use App\Services\GroupOwnership\ReferenceIntegrity;
 use Carbon\Carbon;
 
 /**
@@ -12,6 +14,34 @@ use Carbon\Carbon;
  */
 class ManagementGroupObserver
 {
+    /**
+     * Eine Verwaltungsgruppe wechselt die Benutzergruppe nur zusammen mit ihren
+     * Stammdaten (ManagementGroupTransfer); ein bloßes Umsetzen von user_group_id
+     * wird abgelehnt, wenn sie dann Stammdaten einer fremden Gruppe verwendete.
+     */
+    public function updating(ManagementGroup $managementGroup): void
+    {
+        if (GroupOwnership::isSuspended() || ! $managementGroup->isDirty('user_group_id')) {
+            return;
+        }
+
+        GroupOwnership::assertNoViolations($managementGroup, (int) $managementGroup->user_group_id);
+    }
+
+    /**
+     * Die Standardvorlage ist eine eingebaute Vorlage oder gehört zur Benutzergruppe der
+     * Verwaltungsgruppe (ReferenceIntegrity) – sonst sähen deren Mitglieder in der
+     * Abrechnung Inhalt und Kopfbild einer fremden Gruppe.
+     */
+    public function saving(ManagementGroup $managementGroup): void
+    {
+        if (GroupOwnership::isSuspended() || ! $managementGroup->isDirty(['default_billing_template_id', 'user_group_id'])) {
+            return;
+        }
+
+        ReferenceIntegrity::assertTemplateFits($managementGroup->default_billing_template_id, (int) $managementGroup->user_group_id);
+    }
+
     /**
      * Handle the ManagementGroup "created" event: seed the first billing interval.
      */

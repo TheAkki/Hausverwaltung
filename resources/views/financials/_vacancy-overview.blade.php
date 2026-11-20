@@ -36,6 +36,7 @@
                                 <th class="py-1">{{ __('Betrag') }}</th>
                                 <th class="py-1">{{ __('Status') }}</th>
                                 <th class="py-1">{{ __('Notiz') }}</th>
+                                <th class="py-1">{{ __('Beleg') }}</th>
                                 <th class="py-1"></th>
                             </tr>
                         </thead>
@@ -48,6 +49,7 @@
                                     <td class="py-1 whitespace-nowrap {{ $claim->amount < 0 ? 'text-red-600' : '' }}">{{ euro($claim->amount) }} €</td>
                                     <td class="py-1">{{ $claim->isOpen() ? __('Offen') : __('Gebucht') }}</td>
                                     <td class="py-1 text-gray-500">{{ $claim->notes }}</td>
+                                    <td class="py-1"><x-receipt-link :record="$claim" route="files.settlement-claim" /></td>
                                     <td class="py-1">
                                         <form method="POST" action="{{ route('settlement-claims.destroy', $claim) }}" onsubmit="return confirm('{{ __('Forderung wirklich löschen?') }}')">
                                             @csrf

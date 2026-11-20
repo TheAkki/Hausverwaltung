@@ -6,7 +6,7 @@
     <div class="py-12">
         <div class="max-w-[691px] mx-auto sm:px-6 lg:px-8">
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg p-6">
-                <form method="POST" action="{{ route('settlement-claims.update', $settlementClaim) }}" class="space-y-4">
+                <form method="POST" action="{{ route('settlement-claims.update', $settlementClaim) }}" class="space-y-4" enctype="multipart/form-data">
                     @csrf
                     @method('PUT')
 
@@ -44,6 +44,8 @@
                         <textarea id="notes" name="notes" rows="3" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm">{{ old('notes', $settlementClaim->notes) }}</textarea>
                         <x-input-error :messages="$errors->get('notes')" class="mt-2" />
                     </div>
+
+                    <x-receipt-input :record="$settlementClaim" route="files.settlement-claim" />
 
                     <div class="flex items-center gap-4">
                         <x-primary-button>{{ __('Save') }}</x-primary-button>

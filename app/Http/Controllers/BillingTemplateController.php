@@ -12,14 +12,13 @@ use App\Models\RentalUnit;
 use App\Models\Tenant;
 use App\Services\BillingTemplateRenderer;
 use App\Services\FakeBillingStatementData;
+use App\Support\FileStorage;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Mpdf\Tag as MpdfTag;
@@ -86,7 +85,7 @@ class BillingTemplateController extends Controller
         $validated['is_default'] = false;
 
         if ($request->hasFile('header_image')) {
-            $validated['header_image_path'] = $request->file('header_image')->store('billing-template-images', 'public');
+            $validated['header_image_path'] = FileStorage::store($request->file('header_image'), FileStorage::BILLING_TEMPLATE_IMAGES);
         }
         unset($validated['header_image']);
 
@@ -138,12 +137,10 @@ class BillingTemplateController extends Controller
         $validated['is_default'] = false;
 
         if ($request->hasFile('header_image')) {
-            if ($billingTemplate->header_image_path) {
-                Storage::disk('public')->delete($billingTemplate->header_image_path);
-            }
-            $validated['header_image_path'] = $request->file('header_image')->store('billing-template-images', 'public');
+            FileStorage::delete($billingTemplate->header_image_path);
+            $validated['header_image_path'] = FileStorage::store($request->file('header_image'), FileStorage::BILLING_TEMPLATE_IMAGES);
         } elseif ($request->boolean('remove_header_image') && $billingTemplate->header_image_path) {
-            Storage::disk('public')->delete($billingTemplate->header_image_path);
+            FileStorage::delete($billingTemplate->header_image_path);
             $validated['header_image_path'] = null;
         }
         unset($validated['header_image'], $validated['remove_header_image']);
@@ -171,12 +168,7 @@ class BillingTemplateController extends Controller
         $copy->is_default = false;
         $copy->user_group_id = $request->user()->groups->first()?->id;
 
-        if ($billingTemplate->header_image_path) {
-            $extension = pathinfo($billingTemplate->header_image_path, PATHINFO_EXTENSION);
-            $newPath = 'billing-template-images/'.Str::uuid().($extension ? ".{$extension}" : '');
-            Storage::disk('public')->copy($billingTemplate->header_image_path, $newPath);
-            $copy->header_image_path = $newPath;
-        }
+        $copy->header_image_path = FileStorage::duplicate($billingTemplate->header_image_path);
 
         $copy->save();
 
@@ -483,9 +475,7 @@ class BillingTemplateController extends Controller
      */
     public function destroy(BillingTemplate $billingTemplate): RedirectResponse
     {
-        if ($billingTemplate->header_image_path) {
-            Storage::disk('public')->delete($billingTemplate->header_image_path);
-        }
+        FileStorage::delete($billingTemplate->header_image_path);
 
         $billingTemplate->delete();
 

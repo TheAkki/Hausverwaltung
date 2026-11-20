@@ -53,7 +53,9 @@ class CostCategoryObserver
             return;
         }
 
+        // Nur Unterkategorien derselben Gruppe; die einer Systemkategorie in allen Gruppen.
         CostCategory::where('name', 'like', $costCategory->name.CostCategory::SEPARATOR.'%')
+            ->when($costCategory->user_group_id !== null, fn ($q) => $q->where('user_group_id', $costCategory->user_group_id))
             ->update([
                 'is_relevant_for_billing' => $costCategory->is_relevant_for_billing,
                 'is_tax_relevant' => $costCategory->is_tax_relevant,

@@ -69,9 +69,14 @@ class TenantController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(Tenant $tenant): View
+    public function show(Request $request, Tenant $tenant): View
     {
-        $tenant->load('leases.rentalUnit.managementUnit');
+        // Nur Mietverträge, die der Betrachter sehen darf – ein Mieter kann (Altdaten)
+        // auch in Verwaltungsgruppen anderer Gruppen vorkommen.
+        $tenant->load([
+            'leases' => fn ($query) => $query->visibleTo($request->user()),
+            'leases.rentalUnit.managementUnit',
+        ]);
 
         return view('tenants.show', compact('tenant'));
     }

@@ -23,6 +23,16 @@ info:
     `generate_costs` (Rechnungen) und `refresh_forecast` (Kostenzeilen) die automatisch
     erzeugten Kostenzeilen ab.
 
+    **Gruppen und Stammdaten:** Mieter, Rechnungssteller und eigene Kategorien gehören
+    zur selben Benutzergruppe wie die Verwaltungsgruppe, in der sie verwendet werden
+    (Systemkategorien passen überall). Sonst antwortet die API mit 422 am betroffenen
+    Feld (`tenant_ids`, `invoice_issuer_id`, `cost_category_id`, `user_group_id`).
+    Wechselt eine Verwaltungsgruppe per `PUT /management-groups/{id}` die
+    Benutzergruppe, ziehen ihre Stammdaten mit um; was auch eine andere
+    Verwaltungsgruppe verwendet, wird kopiert (Antwortfeld `transfer`).
+    `POST /invoice-issuers/{id}/copy` kopiert einen Rechnungssteller samt
+    Kundenaccounts in eine andere eigene Gruppe.
+
     **Anmeldung:** Am einfachsten mit einem persönlichen Token aus dem Profil
     (API-Zugang) als `Authorization: Bearer <Token>`; alternativ `POST /api/login`.
 
@@ -351,7 +361,24 @@ paths:
                   properties:
                     default_billing_template_id: { type: integer, nullable: true }
       responses:
-        '200': { $ref: '#/components/responses/ManagementGroup' }
+        '200':
+          description: |
+            Die Verwaltungsgruppe. Bei einem Wechsel von `user_group_id` listet
+            `transfer`, welche Stammdaten mitverschoben (`moved`), in die neue Gruppe
+            kopiert (`copied`, weil auch eine andere Verwaltungsgruppe sie verwendet) oder
+            durch einen gleichen Eintrag der neuen Gruppe ersetzt wurden (`reused`).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                properties:
+                  transfer:
+                    type: object
+                    properties:
+                      moved: { type: array, items: { type: string } }
+                      copied: { type: array, items: { type: string } }
+                      reused: { type: array, items: { type: string } }
         '403': { $ref: '#/components/responses/Forbidden' }
         '422': { $ref: '#/components/responses/ValidationError' }
     delete:
@@ -647,7 +674,7 @@ paths:
     post:
       tags: [Kosten]
       summary: Kostenzeile zu einer Rechnung erstellen
-      description: Die Summe der Kostenzeilen je Periode muss zwischen 0 und dem Rechnungsbetrag liegen – bei einer Rückzahlung (negativer Betrag) also ebenfalls negativ sein (außer bei `disable_amount_cap`).
+      description: Die Summe der Kostenzeilen je Periode muss zwischen 0 und dem Rechnungsbetrag liegen – bei einer Rückzahlung (negativer Betrag) also ebenfalls negativ sein (außer bei `disable_amount_cap`). Zuordnung, Abrechnungsintervall und Konto gehören zu einer sichtbaren Verwaltungsgruppe und zueinander; sonst 403 bzw. 422.
       requestBody:
         required: true
         content:
@@ -918,6 +945,30 @@ paths:
       responses:
         '204': { description: Gelöscht }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /invoice-issuers/{invoiceIssuer}/copy:
+    parameters:
+      - { name: invoiceIssuer, in: path, required: true, schema: { type: integer } }
+    post:
+      tags: [Rechnungssteller]
+      summary: Rechnungssteller in eine andere eigene Gruppe kopieren
+      description: |
+        Legt den Rechnungssteller samt Kundenaccounts in der Gruppe an. Gibt es dort
+        schon einen gleichen (Name, PLZ, Ort), wird dieser zurückgegeben und um fehlende
+        Kundenaccounts (Kundennummer) ergänzt.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_group_id]
+              properties:
+                user_group_id: { type: integer, description: "Eine andere Gruppe, in der du Mitglied bist" }
+      responses:
+        '201': { $ref: '#/components/responses/Object' }
+        '200': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
   /invoice-issuer-accounts:
     post:
       tags: [Rechnungssteller]
@@ -1152,6 +1203,43 @@ paths:
         '201': { $ref: '#/components/responses/Object' }
         '422': { $ref: '#/components/responses/ValidationError' }
 
+  /account-transfers/{accountTransfer}/file:
+    parameters:
+      - { name: accountTransfer, in: path, required: true, schema: { type: integer } }
+    post:
+      tags: [Konten]
+      summary: Beleg (Datei) der Umbuchung anhängen bzw. ersetzen
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary, description: 'pdf, doc, docx, jpg, jpeg, png; max. 10 MB' }
+      responses:
+        '200': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    get:
+      tags: [Konten]
+      summary: Beleg der Umbuchung herunterladen
+      responses:
+        '200':
+          description: Beleg-Datei (Original-Dateiname im Content-Disposition-Header)
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Kein Beleg vorhanden }
+    delete:
+      tags: [Konten]
+      summary: Beleg der Umbuchung löschen
+      responses:
+        '200': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /maintenance-contracts:
     post:
       tags: [Wartungsverträge]
@@ -1371,6 +1459,43 @@ paths:
       summary: Forderung löschen
       responses:
         '204': { description: Gelöscht }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /settlement-claims/{settlementClaim}/file:
+    parameters:
+      - { name: settlementClaim, in: path, required: true, schema: { type: integer } }
+    post:
+      tags: [Forderungen]
+      summary: Beleg (Datei) der Forderung anhängen bzw. ersetzen
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary, description: 'pdf, doc, docx, jpg, jpeg, png; max. 10 MB' }
+      responses:
+        '200': { $ref: '#/components/responses/Object' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+    get:
+      tags: [Forderungen]
+      summary: Beleg der Forderung herunterladen
+      responses:
+        '200':
+          description: Beleg-Datei (Original-Dateiname im Content-Disposition-Header)
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Kein Beleg vorhanden }
+    delete:
+      tags: [Forderungen]
+      summary: Beleg der Forderung löschen
+      responses:
+        '200': { $ref: '#/components/responses/Object' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
   /billing-templates:
@@ -1918,6 +2043,17 @@ components:
             costable_type: { type: string }
             costable_id: { type: integer }
             file_original_name: { type: string, nullable: true }
+            amount_segments:
+              type: array
+              nullable: true
+              readOnly: true
+              description: Gespeicherte Betragsintervalle (Sollbetrag je Termin); null ohne Intervalle
+              items:
+                type: object
+                properties:
+                  start_date: { type: string, format: date }
+                  end_date: { type: string, format: date, nullable: true }
+                  amount: { type: number }
             costs: { type: array, items: { $ref: '#/components/schemas/Cost' } }
 
     CostInput:

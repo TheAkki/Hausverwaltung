@@ -13,6 +13,12 @@
 
     <div class="py-12">
         <div class="max-w-[691px] mx-auto sm:px-6 lg:px-8 space-y-6">
+            @if (session(\App\Http\Controllers\InvoiceIssuerController::COPY_STATUS))
+                <div class="bg-green-50 border border-green-200 text-green-900 rounded-lg p-4 text-sm" data-copy-status>
+                    {{ session(\App\Http\Controllers\InvoiceIssuerController::COPY_STATUS) }}
+                </div>
+            @endif
+
             <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg p-6">
                 <p class="text-sm text-gray-700">{{ $invoiceIssuer->fullAddress() }}</p>
                 @if ($invoiceIssuer->email || $invoiceIssuer->phone || $invoiceIssuer->mobile_phone)
@@ -71,6 +77,26 @@
                     @endforelse
                 </ul>
             </div>
+
+            @if ($copyTargets->isNotEmpty())
+                <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg p-6" data-copy-form>
+                    <h3 class="font-semibold mb-1">{{ __('In andere Gruppe kopieren') }}</h3>
+                    <p class="text-sm text-gray-500 mb-3">{{ __('Rechnungssteller gehören zu einer Gruppe. Brauchst du ihn auch in einer anderen Gruppe (z. B. dieselben Stadtwerke in einer gemeinsamen Gruppe), lege dort eine Kopie mit allen Kundenaccounts an.') }}</p>
+                    <form method="POST" action="{{ route('invoice-issuers.copy', $invoiceIssuer) }}" class="flex items-end gap-3">
+                        @csrf
+                        <div class="flex-1">
+                            <x-input-label for="copy_user_group_id" :value="__('Gruppe')" />
+                            <select id="copy_user_group_id" name="user_group_id" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm" required>
+                                @foreach ($copyTargets as $group)
+                                    <option value="{{ $group->id }}">{{ $group->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <x-primary-button>{{ __('Kopieren') }}</x-primary-button>
+                    </form>
+                    <x-input-error :messages="$errors->get('user_group_id')" class="mt-2" />
+                </div>
+            @endif
         </div>
     </div>
 </x-app-layout>

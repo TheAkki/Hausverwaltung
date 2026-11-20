@@ -3,9 +3,9 @@
 namespace App\Services;
 
 use App\Models\Invoice;
+use App\Support\FileStorage;
 use Illuminate\Http\File;
 use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Storage;
 
 /**
  * Beleg (Datei) einer Rechnung speichern, ersetzen und entfernen – dieselbe Logik für
@@ -14,13 +14,9 @@ use Illuminate\Support\Facades\Storage;
  */
 final class InvoiceReceipt
 {
-    public const DISK = 'public';
+    public const ALLOWED_EXTENSIONS = FileStorage::ALLOWED_EXTENSIONS;
 
-    public const DIRECTORY = 'invoices';
-
-    public const ALLOWED_EXTENSIONS = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png'];
-
-    public const MAX_KILOBYTES = 10240;
+    public const MAX_KILOBYTES = FileStorage::MAX_KILOBYTES;
 
     private const BYTES_PER_KILOBYTE = 1024;
 
@@ -31,7 +27,7 @@ final class InvoiceReceipt
      */
     public static function rules(): array
     {
-        return ['file', 'max:'.self::MAX_KILOBYTES, 'mimes:'.implode(',', self::ALLOWED_EXTENSIONS)];
+        return FileStorage::uploadRules();
     }
 
     /**
@@ -42,7 +38,7 @@ final class InvoiceReceipt
         $this->remove($invoice);
 
         $invoice->update([
-            'file_path' => Storage::disk(self::DISK)->putFile(self::DIRECTORY, $file),
+            'file_path' => FileStorage::store($file, FileStorage::INVOICES),
             'file_original_name' => $originalName,
         ]);
     }
@@ -71,9 +67,7 @@ final class InvoiceReceipt
      */
     public function remove(Invoice $invoice): void
     {
-        if ($invoice->file_path) {
-            Storage::disk(self::DISK)->delete($invoice->file_path);
-        }
+        FileStorage::delete($invoice->file_path);
     }
 
     private function assertAcceptable(string $path): void

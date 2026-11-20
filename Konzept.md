@@ -295,10 +295,20 @@ Erstelle eine Übersichtsseite in dem alle offenen Buchungen bis zum jeweiligen 
 
 ### Detailbild nicht zugeordnete Buchungen
 Erstelle eine Übersichtsseite in der alle Buchungen bis zum jeweiligen Tag enthalten sind, bei der die Summe der Zuordnungen nicht der Rechnungssumme entspricht. (Es sei denn, dass die Option, dass die Buchungen nicht der Rechnungssumme entsprechen muss ist gesetzt.)
+Verglichen wird je Termin: bei einer einmaligen Rechnung die Summe aller Kostenzeilen mit dem wirksamen Rechnungsbetrag, bei einer händischen der Betrag des Termins, bei einer wiederkehrenden der Betrag des Betragsintervalls, das den Termin abdeckt (sonst der wirksame Rechnungsbetrag). Dafür werden die Betragsintervalle an der Rechnung gespeichert.
 
 ### Sichtbarkeit
 Man sieht nur Verwaltungsgruppen, Verwaltungseinheiten und Mieteinheiten die einer Gruppe zugeordnet sind in der man sich befindet.
 Beim Erstellen einer Verwaltungsgruppe kann man nur Benutzergruppen auswählen in den man auch mitglied ist.
+
+Mieter, Rechnungssteller (samt Kundenaccounts) und eigene Kategorien gehören zur selben Benutzergruppe wie die Verwaltungsgruppe, in der sie verwendet werden. Sonst sähen die Mitglieder einer gemeinsamen Gruppe über Mietverträge und Rechnungen Daten einer anderen Gruppe (z. B. der persönlichen). Systemkategorien (ohne Gruppe) passen überall. Weboberfläche, API und Seeder lehnen eine Mischung ab; bereits vorhandene Zuordnungen bleiben bearbeitbar, und ein Backup stellt den gesicherten Stand unverändert wieder her.
+Wechselt eine Verwaltungsgruppe die Benutzergruppe, ziehen ihre Stammdaten mit um: Gibt es in der neuen Gruppe einen gleichen Eintrag, wird er verwendet; was nur diese Verwaltungsgruppe verwendet, wird verschoben; was auch eine andere verwendet, wird in die neue Gruppe kopiert.
+Ein Rechnungssteller kann samt Kundenaccounts in eine andere eigene Gruppe kopiert werden.
+Die Detailseiten von Mietern und Rechnungsstellern zeigen nur Mietverträge und Rechnungen, die der Betrachter sehen darf.
+Verweise innerhalb einer Verwaltungsgruppe bleiben dort: Abrechnungsintervall und Konto einer Kostenzeile bzw. Mietzahlung gehören zur Verwaltungsgruppe ihrer Zuordnung, ein Kundenaccount zum Rechnungssteller der Rechnung. Kosten lassen sich nur auf Zuordnungen buchen, die man sehen darf.
+Die Standardvorlage einer Verwaltungsgruppe ist eine eingebaute Vorlage oder gehört zu ihrer Benutzergruppe. Wechselt die Verwaltungsgruppe die Gruppe, wird die Vorlage in die neue Gruppe kopiert (oder eine gleichnamige dort verwendet). Eine Vorlage, die Standardvorlage einer Verwaltungsgruppe ist, wechselt die Gruppe nicht.
+Kategorienamen sind innerhalb einer Gruppe (samt Systemkategorien) eindeutig; eine Überkategorie gehört zur selben Gruppe oder ist eine Systemkategorie. Haupt- und Unterkategorien beziehen sich nur auf Kategorien derselben Gruppe.
+Hochgeladene Dateien (Belege, Mietvertragsdokumente, Kopfbilder) liegen nicht öffentlich und werden nur an Benutzer ausgeliefert, die den zugehörigen Datensatz sehen dürfen.
 
 ### Betriebskostenabrechnung
 #### Übersicht aller Buchungen
@@ -486,7 +496,7 @@ Es gibt eine Tabelle mit allen Werbekosten (nicht Miete oder Betriebskostenvorau
 - **DIN-5008-Fensterumschlag + höhenrobuste Kopf-/Fußzeile:** `BillingTemplateRenderer::renderPdf()` setzt mPDFs `setAutoTopMargin`/`setAutoBottomMargin` auf `stretch` – eine Kopf-/Fußzeile, die höher ist als der im Template deklarierte `@page`-margin, schiebt den Content-Bereich automatisch weiter, statt ihn zu überlappen. Das Standard-Template positioniert Absenderzeile + Anschrift zusätzlich als eigenes `.address-window` absolut auf den DIN-5008-Koordinaten (20mm/27mm, 85mm x 45mm), unabhängig von einer variabel hohen Kopfzeile.
 - **`BillingTemplate.css_content` (Formatierung getrennt vom Content):** Konzept.md "### Template": "Der Content soll von der Formatierung getrennt sein. Damit lassen sich Templates besser kopieren, wenn Anpassungen gemacht werden müssen." Neue optionale Spalte `css_content` (in der bestehenden `billing_templates`-Basismigration ergänzt, keine neue Migration). `BillingTemplateRenderer::render()`/`renderPdf()` führen Content und `css_content` beim Rendern zusammen (Konzept.md: "Beim Erstellen der Betriebskostenabrechnung muss dann der Content und die Formatierung zusammen gebracht werden.") – bei `render()` (HTML-Vorschau) wird die (Blade-gerenderte) CSS in den `<head>` eingefügt, bei `renderPdf()` mit einer eventuell im Content selbst noch vorhandenen `<style>` (Altbestand) zusammengeführt, bevor beides an mPDF geht. `BillingTemplateController` (store/update/preview/check/duplicate) sowie `SeedsBillingTemplates` (`[CSS-Content]` in der Testdaten-YAML, analog zu Header/Content/Footer) unterstützen das neue Feld durchgängig; das Standard-Template selbst nutzt es bereits (`BillingTemplateSeeder::defaultCss()`).
 
-Geplant bzw. in Ausarbeitung: Auslastungs- und Cashflow-Übersichten, steuerliche Abrechnungsübersicht, Verknüpfung aller Ein- und Ausgaben mit Rechnungsbelegen.
+Geplant bzw. in Ausarbeitung: Auslastungs- und Cashflow-Übersichten ("### Statistik"). Belege gibt es inzwischen für Rechnungen, Forderungen und Umbuchungen; Mietzahlungen haben keinen eigenen Beleg.
 
 Weitere Sprachen und erweiterte Berechtigungslogik (z. B. sichtbare Daten abhängig von Benutzergruppe) können auf dieser Basis ergänzt werden.
 
@@ -689,6 +699,10 @@ lang: "de"
     Groups:
       - Verwaltungsgruppe-*
 
+    [Mieter]:            # Aufbau wie auf Account-Ebene; gehören dieser Gruppe
+    [Rechnungssteller]:  # Aufbau wie auf Account-Ebene; gehören dieser Gruppe
+    [Kategorien]:        # Aufbau wie auf Account-Ebene; gelten für die Verwaltungsgruppen unter Groups
+
     [Templates]:
       [Template-*]:
         Name: ""
@@ -715,6 +729,9 @@ Innerhalb des Accounts können Gruppen (>=0) angelegt werden. Die Gruppen haben 
 Der Ersteller ist automatisch Admin und muss unter der Auflistung der Admins nicht genannt werden.
 Es können beliebig viele Admins eingetragen werden. Benutzer mit der Berechtigung "User" werden unter Users eingetragen.
 Admins können eigene Verwaltungsgruppen hinzufügen. Die eingefügten Verwaltungsgruppen werden unter Groups aufgelistet. Es muss mindestens eine Verwaltungsgruppe angegen werden.
+Eine Verwaltungsgruppe steht unter "Groups" höchstens einer Gruppe; sie wird gleich in dieser Gruppe angelegt.
+Mieter, Rechnungssteller und eigene Kategorien auf Account-Ebene gehören zur persönlichen Gruppe. Die einer Verwaltungsgruppe unter "Groups" stehen unter der Gruppe selbst (siehe "### Sichtbarkeit"). Die Nummern (z. B. Mieter-3) gelten im ganzen Account und dürfen nur einmal vorkommen. Ein Abrechnungsschlüssel einer Kategorie gilt nur für die Verwaltungsgruppen, in denen sie verwendet werden darf. Verwendet eine Verwaltungsgruppe Stammdaten einer anderen Gruppe, bricht der Seed mit einer Fehlermeldung ab.
+Unter einer Gruppe sind nur die oben gezeigten Einträge erlaubt; Verwaltungsgruppen, Rechnungen und Buchungen stehen auf Account-Ebene. Ein anderer Eintrag bricht den Seed ab, statt still übergangen zu werden.
 Die eingebenen Benutzer müssen einen Account haben.
 
 Die Daten eines Accounts sollen auch über eine Datei-Referenz eingelesen werden können.
@@ -862,6 +879,7 @@ Der Administrator kann alle alle Einstellungen exportieren. Beim Importieren mü
 ## Dokumentation
 ### Bedienungsanleitung
 Es soll automatisch eine HTML Dokumentation für den Benutzer erzeugt werden. In dieser sollen auch Screenshots enthalten sein und Handhabung der Software in einzelnen Schritten beschrieben.
+Die Screenshots erzeugt `php artisan docs:screenshots` aus frei erfundenen Beispieldaten (eigene Datenbank im Speicher, Chromium im Headless-Modus); sie liegen unter `resources/docs/screenshots`.
 #### Erstellung der testdata.yaml
 Es soll erläutert werden, wie der Anwender die Datei zum Seeden der Datenbank erstellen kann.
 #### Erstellung eines Themes
@@ -898,6 +916,18 @@ Erstelle eine REST-API für die oben genannten Anforderungen, mindestens aber
 - Rechnungen an Einnahmen und Ausnahmen anhängen oder löschen (Datei)
 - Nach Rechnungen suchen: Name, Datum bzw. Datumsbereich, Rechnungsnummer
 - Anzeigen von offenen Buchungen
+- Backup erstellen und einspielen
+  - Für Administrator: Alle Daten sichern und einspielen
+  - Für Benutzer: Alle sichtbaren Daten sichern und alle Schreibbaren Daten wieder einspielen
+- Benutzer Eigenschaften auslesen
+  - Name der persönlichen Gruppe
+- API-Token
+  - Für Adminstrator: Kann ein Token für jeden User erstellen
+  - Für Benutzer: Token erstellen, Token löschen (nicht den aktiven)
+- Gruppen
+  - Benutzer kann Gruppen erstellen und wird Besitzer
+  - Besitzer kann Gruppenmitglieder verwalten und Gruppen ohne Member löschen
+  - Administrator kann Gruppen löschen
 
 Erstelle für die API außerdem eine Swagger Dokumentation.
 

@@ -16,6 +16,7 @@ use App\Models\User;
 use App\Services\BackupService;
 use App\Services\InvoiceSeries\InvoiceSeriesService;
 use App\Services\RentPaymentGenerator;
+use App\Support\FileStorage;
 use Database\Seeders\CostCategorySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -68,7 +69,7 @@ class BackupTest extends TestCase
         ]);
         $lease->tenants()->attach($tenant->id);
         app(RentPaymentGenerator::class)->generate($lease->leaseIntervals()->first());
-        Storage::disk('public')->put('lease_documents/vertrag.pdf', 'PDF-Inhalt Mietvertrag');
+        FileStorage::disk()->put('lease_documents/vertrag.pdf', 'PDF-Inhalt Mietvertrag');
         $lease->documents()->create([
             'file_path' => 'lease_documents/vertrag.pdf',
             'original_name' => 'Mietvertrag.pdf',
@@ -78,7 +79,7 @@ class BackupTest extends TestCase
             'user_group_id' => $group->id,
             'name' => 'Stadtwerke', 'street' => 'A', 'postal_code' => '1', 'city' => 'B',
         ]);
-        Storage::disk('public')->put('invoices/rechnung.pdf', 'PDF-Inhalt Rechnung');
+        FileStorage::disk()->put('invoices/rechnung.pdf', 'PDF-Inhalt Rechnung');
         $invoice = Invoice::create([
             'invoice_issuer_id' => $issuer->id,
             'costable_type' => 'management_unit',
@@ -121,7 +122,7 @@ class BackupTest extends TestCase
 
     public function test_a_user_can_export_their_data_as_a_zip_containing_backup_json_and_files(): void
     {
-        Storage::fake('public');
+        Storage::fake(FileStorage::diskName());
 
         $user = User::factory()->create();
         $this->buildStructure($user);
@@ -148,7 +149,7 @@ class BackupTest extends TestCase
 
     public function test_importing_an_export_restores_the_whole_structure_with_permissions(): void
     {
-        Storage::fake('public');
+        Storage::fake(FileStorage::diskName());
 
         $user = User::factory()->create();
         $managementGroup = $this->buildStructure($user);
@@ -201,13 +202,13 @@ class BackupTest extends TestCase
         $document = $lease->documents()->first();
         $this->assertNotNull($document);
         $this->assertSame('Mietvertrag.pdf', $document->original_name);
-        Storage::disk('public')->assertExists($document->file_path);
+        FileStorage::disk()->assertExists($document->file_path);
 
         // Rechnung samt Datei und Kostenzeile hängt an der importierten Einheit.
         $invoice = Invoice::where('costable_type', 'management_unit')->where('costable_id', $unit->id)->first();
         $this->assertNotNull($invoice);
         $this->assertSame('Backup-Rechnung', $invoice->description);
-        Storage::disk('public')->assertExists($invoice->file_path);
+        FileStorage::disk()->assertExists($invoice->file_path);
         $this->assertSame(1, $invoice->costs()->count());
 
         // Kontosystem: Konten, Umbuchung und Konto-Zuordnungen sind wiederhergestellt.
@@ -246,7 +247,7 @@ class BackupTest extends TestCase
      */
     public function test_importing_preserves_custom_category_scoping_and_reuses_systemweite_categories(): void
     {
-        Storage::fake('public');
+        Storage::fake(FileStorage::diskName());
 
         $user = User::factory()->create();
         $managementGroup = $this->buildStructure($user);
@@ -296,7 +297,7 @@ class BackupTest extends TestCase
 
     public function test_the_administrator_can_export_and_import_all_settings(): void
     {
-        Storage::fake('public');
+        Storage::fake(FileStorage::diskName());
 
         $user = User::factory()->create();
         $this->buildStructure($user);
@@ -321,7 +322,7 @@ class BackupTest extends TestCase
 
     public function test_a_full_backup_import_restores_users_reference_data_and_groups(): void
     {
-        Storage::fake('public');
+        Storage::fake(FileStorage::diskName());
 
         $user = User::factory()->create();
         $this->buildStructure($user);
@@ -329,7 +330,7 @@ class BackupTest extends TestCase
         // Globale Referenzdaten, die der Gesamt-Export mitnehmen muss: ein eigenes
         // Theme und eine Abrechnungsvorlage mit Kopfbild.
         $theme = Theme::create(['name' => 'Eigenes Theme', 'slug' => 'eigenes-theme', 'css' => 'body { color: red; }', 'is_builtin' => false]);
-        Storage::disk('public')->put('billing-templates/kopf.png', 'PNG');
+        FileStorage::disk()->put('billing-templates/kopf.png', 'PNG');
         BillingTemplate::create([
             'name' => 'Backup-Vorlage', 'content' => 'Inhalt', 'header' => 'Kopf', 'footer' => 'Fuß',
             'header_image_path' => 'billing-templates/kopf.png',
@@ -364,7 +365,7 @@ class BackupTest extends TestCase
         $this->assertNotNull(Theme::where('slug', 'eigenes-theme')->first());
         $template = BillingTemplate::where('name', 'Backup-Vorlage')->first();
         $this->assertNotNull($template);
-        Storage::disk('public')->assertExists($template->header_image_path);
+        FileStorage::disk()->assertExists($template->header_image_path);
 
         // Die Gruppen samt Struktur wurden (als neue Kopien) wiederhergestellt.
         $this->assertSame(2, ManagementGroup::where('description', 'Backup MG')->count());
@@ -405,7 +406,7 @@ class BackupTest extends TestCase
 
     public function test_a_normal_user_cannot_import_a_full_backup(): void
     {
-        Storage::fake('public');
+        Storage::fake(FileStorage::diskName());
 
         $admin = User::factory()->create(['email' => config('app.admin_email')]);
         $zipPath = app(BackupService::class)->exportFull($admin);
@@ -443,7 +444,7 @@ class BackupTest extends TestCase
 
     public function test_the_import_can_be_uploaded_through_the_profile_form(): void
     {
-        Storage::fake('public');
+        Storage::fake(FileStorage::diskName());
 
         $user = User::factory()->create();
         $this->buildStructure($user);

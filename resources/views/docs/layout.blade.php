@@ -20,6 +20,7 @@
         a { color: #4f46e5; }
         ul, ol { padding-left: 1.4rem; }
         li { margin-bottom: .3rem; }
+        img { max-width: 100%; height: auto; border: 1px solid #e5e7eb; border-radius: .375rem; margin: .5rem 0 1rem; }
     </style>
 </head>
 <body>

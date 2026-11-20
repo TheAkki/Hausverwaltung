@@ -6,6 +6,7 @@ namespace Tests\Unit;
 
 use App\Models\Invoice;
 use App\Services\InvoiceReceipt;
+use App\Support\FileStorage;
 use Database\Seeders\CostCategorySeeder;
 use Database\Seeders\TestDataSeeder;
 use Illuminate\Support\Facades\Storage;
@@ -19,7 +20,7 @@ class TestDataSeederReceiptsTest extends TestDataSeederTestCase
     protected function setUp(): void
     {
         parent::setUp();
-        Storage::fake(InvoiceReceipt::DISK);
+        Storage::fake(FileStorage::diskName());
         $this->seed(CostCategorySeeder::class);
     }
 
@@ -73,8 +74,8 @@ class TestDataSeederReceiptsTest extends TestDataSeederTestCase
 
         $invoice = Invoice::sole();
         $this->assertSame('2026-01-02__Rechnung.pdf', $invoice->file_original_name);
-        Storage::disk(InvoiceReceipt::DISK)->assertExists($invoice->file_path);
-        $this->assertSame('%PDF-1.4', Storage::disk(InvoiceReceipt::DISK)->get($invoice->file_path));
+        FileStorage::disk()->assertExists($invoice->file_path);
+        $this->assertSame('%PDF-1.4', FileStorage::disk()->get($invoice->file_path));
     }
 
     // KI-generiert
@@ -86,14 +87,14 @@ class TestDataSeederReceiptsTest extends TestDataSeederTestCase
 
         $this->seed(TestDataSeeder::class);
         $this->assertSame($first, Invoice::sole()->file_path);
-        $this->assertCount(1, Storage::disk(InvoiceReceipt::DISK)->allFiles());
+        $this->assertCount(1, FileStorage::disk()->allFiles());
 
         $this->receipt('neu.pdf', '%PDF-neu');
         $this->seedWithReceipt('neu.pdf');
 
         $this->assertSame('neu.pdf', Invoice::sole()->file_original_name);
-        Storage::disk(InvoiceReceipt::DISK)->assertMissing($first);
-        $this->assertCount(1, Storage::disk(InvoiceReceipt::DISK)->allFiles());
+        FileStorage::disk()->assertMissing($first);
+        $this->assertCount(1, FileStorage::disk()->allFiles());
     }
 
     // KI-generiert

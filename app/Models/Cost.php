@@ -2,7 +2,10 @@
 
 namespace App\Models;
 
+use App\Models\Pivots\AccountCost;
+use App\Observers\CostObserver;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -14,6 +17,7 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
  * a CostCategory and a polymorphic costable (ManagementGroup/Unit/RentalUnit).
  */
 #[Fillable(['invoice_id', 'costable_type', 'costable_id', 'billing_interval_id', 'cost_category_id', 'amount', 'period_date', 'booking_date', 'note'])]
+#[ObservedBy(CostObserver::class)]
 class Cost extends Model
 {
     use HasFactory;
@@ -68,7 +72,7 @@ class Cost extends Model
      */
     public function accounts(): BelongsToMany
     {
-        return $this->belongsToMany(Account::class, 'account_cost')->withPivot('amount')->withTimestamps();
+        return $this->belongsToMany(Account::class, 'account_cost')->using(AccountCost::class)->withPivot('amount')->withTimestamps();
     }
 
     /**

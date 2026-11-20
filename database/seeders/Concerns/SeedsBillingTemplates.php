@@ -5,8 +5,8 @@ namespace Database\Seeders\Concerns;
 use App\Models\BillingTemplate;
 use App\Models\Group;
 use App\Models\ManagementGroup;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
+use App\Support\FileStorage;
+use Illuminate\Http\File;
 use Symfony\Component\Yaml\Yaml;
 
 /**
@@ -178,14 +178,10 @@ trait SeedsBillingTemplates
 
         $resolvedPath = $this->resolveLocalAssetPath($localPath);
 
-        if ($template->header_image_path) {
-            Storage::disk('public')->delete($template->header_image_path);
-        }
+        FileStorage::delete($template->header_image_path);
 
-        $extension = pathinfo($resolvedPath, PATHINFO_EXTENSION);
-        $storedPath = 'billing-template-images/'.Str::uuid().($extension !== '' ? ".{$extension}" : '');
-        Storage::disk('public')->put($storedPath, file_get_contents($resolvedPath));
-
-        $template->update(['header_image_path' => $storedPath]);
+        $template->update([
+            'header_image_path' => FileStorage::store(new File($resolvedPath), FileStorage::BILLING_TEMPLATE_IMAGES),
+        ]);
     }
 }

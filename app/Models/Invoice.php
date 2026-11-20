@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use App\Observers\InvoiceObserver;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -20,8 +22,9 @@ use Illuminate\Support\Carbon;
 #[Fillable([
     'invoice_issuer_id', 'invoice_issuer_account_id', 'costable_type', 'costable_id', 'amount', 'effective_amount',
     'invoice_number', 'invoice_date', 'booking_date', 'description', 'file_path', 'file_original_name', 'periodicity',
-    'recurrence_start', 'recurrence_end', 'disable_amount_cap',
+    'recurrence_start', 'recurrence_end', 'disable_amount_cap', 'amount_segments',
 ])]
+#[ObservedBy(InvoiceObserver::class)]
 class Invoice extends Model
 {
     use HasFactory;
@@ -48,6 +51,7 @@ class Invoice extends Model
             'recurrence_start' => 'date',
             'recurrence_end' => 'date',
             'disable_amount_cap' => 'boolean',
+            'amount_segments' => 'array',
         ];
     }
 
@@ -114,6 +118,21 @@ class Invoice extends Model
     public function effectiveAmount(): float
     {
         return (float) ($this->effective_amount ?? $this->amount);
+    }
+
+    /**
+     * Sollbetrag des Termins am $date: der Betrag des Betragsintervalls, das ihn abdeckt
+     * (amount_segments), sonst der wirksame Rechnungsbetrag.
+     */
+    public function expectedAmountOn(string $date): float
+    {
+        foreach ($this->amount_segments ?? [] as $segment) {
+            if ($date >= $segment['start_date'] && ($segment['end_date'] === null || $date <= $segment['end_date'])) {
+                return (float) $segment['amount'];
+            }
+        }
+
+        return $this->effectiveAmount();
     }
 
     /**

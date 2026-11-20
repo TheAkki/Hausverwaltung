@@ -3,7 +3,9 @@
 namespace App\Models;
 
 use App\Models\Concerns\HasContactDetails;
+use App\Observers\InvoiceIssuerObserver;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -17,6 +19,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
     'user_group_id', 'name', 'first_name', 'salutation', 'company_name', 'street', 'postal_code', 'city',
     'email', 'phone', 'mobile_phone', 'iban', 'bic', 'comment',
 ])]
+#[ObservedBy(InvoiceIssuerObserver::class)]
 class InvoiceIssuer extends Model
 {
     use HasContactDetails, HasFactory;

@@ -17,6 +17,7 @@
                                 <option value="{{ $userGroup->id }}" @selected(old('user_group_id', $managementGroup->user_group_id) == $userGroup->id)>{{ $userGroup->name }}</option>
                             @endforeach
                         </select>
+                        <p class="mt-1 text-xs text-gray-500" data-transfer-hint>{{ __('Wechselt die Benutzergruppe, ziehen Mieter, Rechnungssteller und eigene Kategorien mit um. Was auch eine andere Verwaltungsgruppe verwendet, wird in die neue Gruppe kopiert.') }}</p>
                         <x-input-error :messages="$errors->get('user_group_id')" class="mt-2" />
                     </div>
 

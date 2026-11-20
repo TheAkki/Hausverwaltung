@@ -3,7 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\CostCategory;
+use App\Models\Invoice;
 use App\Models\InvoiceIssuer;
+use App\Models\ManagementGroup;
 use App\Models\User;
 use Database\Seeders\CostCategorySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -79,7 +81,7 @@ class InvoiceIssuerVisibilityTest extends TestCase
 
         $otherUser = User::factory()->create();
         $otherGroup = $otherUser->groups()->first();
-        $managementGroup = \App\Models\ManagementGroup::create(['description' => 'Other Group', 'user_group_id' => $otherGroup->id]);
+        $managementGroup = ManagementGroup::create(['description' => 'Other Group', 'user_group_id' => $otherGroup->id]);
         $billingInterval = $managementGroup->billingIntervals()->first();
         $category = CostCategory::first();
 
@@ -94,6 +96,6 @@ class InvoiceIssuerVisibilityTest extends TestCase
         ]);
 
         $response->assertForbidden();
-        $this->assertSame(0, \App\Models\Invoice::count());
+        $this->assertSame(0, Invoice::count());
     }
 }

@@ -5,6 +5,7 @@ namespace Tests\Unit;
 use App\Models\BillingTemplate;
 use App\Models\Group;
 use App\Models\ManagementGroup;
+use App\Support\FileStorage;
 use Database\Seeders\TestDataSeeder;
 use Illuminate\Support\Facades\Storage;
 
@@ -16,7 +17,7 @@ class TestDataSeederTemplatesTest extends TestDataSeederTestCase
 {
     public function test_a_sharegroups_template_is_scoped_to_it_and_marked_standard_becomes_its_management_groups_default(): void
     {
-        Storage::fake('public');
+        Storage::fake(FileStorage::diskName());
 
         file_put_contents($this->path, <<<'YAML'
         lang: "de"
@@ -92,7 +93,7 @@ class TestDataSeederTemplatesTest extends TestDataSeederTestCase
 
     public function test_a_sharegroups_template_image_is_uploaded_from_the_given_local_path(): void
     {
-        Storage::fake('public');
+        Storage::fake(FileStorage::diskName());
 
         $imagePath = sys_get_temp_dir().'/testdata-seeder-logo-'.uniqid().'.png';
         $pngBytes = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=');
@@ -126,8 +127,8 @@ class TestDataSeederTemplatesTest extends TestDataSeederTestCase
         $template = BillingTemplate::where('name', 'Mit Bild')->first();
         $this->assertNotNull($template);
         $this->assertNotNull($template->header_image_path);
-        Storage::disk('public')->assertExists($template->header_image_path);
-        $this->assertSame($pngBytes, Storage::disk('public')->get($template->header_image_path));
+        FileStorage::disk()->assertExists($template->header_image_path);
+        $this->assertSame($pngBytes, FileStorage::disk()->get($template->header_image_path));
     }
 
     public function test_reseeding_a_sharegroups_template_updates_it_in_place_without_duplicating(): void

@@ -4,9 +4,9 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\BillingTemplate;
+use App\Support\FileStorage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 /**
@@ -17,10 +17,6 @@ use Illuminate\Validation\Rule;
  */
 class BillingTemplateController extends Controller
 {
-    private const IMAGE_DIRECTORY = 'billing-template-images';
-
-    private const IMAGE_DISK = 'public';
-
     private const IMAGE_RULES = ['image', 'max:2048'];
 
     public function __construct()
@@ -48,7 +44,9 @@ class BillingTemplateController extends Controller
             ...collect($validated)->except('header_image')->all(),
             // Wie im Web: "Standard" ist der systemweiten Vorlage vorbehalten.
             'is_default' => false,
-            'header_image_path' => $request->file('header_image')?->store(self::IMAGE_DIRECTORY, self::IMAGE_DISK),
+            'header_image_path' => $request->hasFile('header_image')
+                ? FileStorage::store($request->file('header_image'), FileStorage::BILLING_TEMPLATE_IMAGES)
+                : null,
         ]);
 
         return response()->json($template, 201);
@@ -93,7 +91,7 @@ class BillingTemplateController extends Controller
 
         $this->deleteHeaderImage($billingTemplate);
         $billingTemplate->update([
-            'header_image_path' => $request->file('header_image')->store(self::IMAGE_DIRECTORY, self::IMAGE_DISK),
+            'header_image_path' => FileStorage::store($request->file('header_image'), FileStorage::BILLING_TEMPLATE_IMAGES),
         ]);
 
         return response()->json($billingTemplate);
@@ -101,9 +99,7 @@ class BillingTemplateController extends Controller
 
     private function deleteHeaderImage(BillingTemplate $billingTemplate): void
     {
-        if ($billingTemplate->header_image_path) {
-            Storage::disk(self::IMAGE_DISK)->delete($billingTemplate->header_image_path);
-        }
+        FileStorage::delete($billingTemplate->header_image_path);
     }
 
     /**

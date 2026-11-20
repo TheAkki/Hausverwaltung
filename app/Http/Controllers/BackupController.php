@@ -13,9 +13,7 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
  */
 class BackupController extends Controller
 {
-    public function __construct(private readonly BackupService $backupService)
-    {
-    }
+    public function __construct(private readonly BackupService $backupService) {}
 
     /**
      * Downloads the authenticated user's own backup ZIP.

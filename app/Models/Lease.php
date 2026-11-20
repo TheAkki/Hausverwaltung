@@ -2,9 +2,11 @@
 
 namespace App\Models;
 
+use App\Models\Pivots\LeaseTenant;
 use App\Observers\LeaseObserver;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -39,7 +41,7 @@ class Lease extends Model
      */
     public function tenants(): BelongsToMany
     {
-        return $this->belongsToMany(Tenant::class)->withTimestamps();
+        return $this->belongsToMany(Tenant::class)->using(LeaseTenant::class)->withTimestamps();
     }
 
     public function tenantNames(): string
@@ -141,5 +143,16 @@ class Lease extends Model
     public function settlementClaims(): HasMany
     {
         return $this->hasMany(SettlementClaim::class);
+    }
+
+    /**
+     * Mietverträge in Verwaltungsgruppen, in deren Benutzergruppe der Benutzer ist.
+     *
+     * @param  Builder<Lease>  $query
+     * @return Builder<Lease>
+     */
+    public function scopeVisibleTo(Builder $query, User $user): Builder
+    {
+        return $query->whereHas('rentalUnit.managementUnit.managementGroup', fn (Builder $q) => $q->visibleTo($user));
     }
 }

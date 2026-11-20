@@ -16,6 +16,7 @@ class TemplateHelpController extends Controller
 {
     /**
      * The example content shown on the help page, demonstrating property access,
+     *
      * @if, and @foreach (both over a plain list and over an associative array) -
      * also used as-is by preview() so the explanation and the live example match.
      */

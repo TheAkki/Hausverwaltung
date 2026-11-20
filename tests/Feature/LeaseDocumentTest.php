@@ -6,6 +6,7 @@ use App\Models\Lease;
 use App\Models\ManagementGroup;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Support\FileStorage;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -17,7 +18,7 @@ class LeaseDocumentTest extends TestCase
 
     public function test_a_document_can_be_uploaded_to_and_removed_from_a_lease(): void
     {
-        Storage::fake('public');
+        Storage::fake(FileStorage::diskName());
 
         $user = User::factory()->create();
         $group = $user->groups()->first();
@@ -45,12 +46,12 @@ class LeaseDocumentTest extends TestCase
 
         $document = $lease->fresh()->documents->first();
         $this->assertSame('mietvertrag.pdf', $document->original_name);
-        Storage::disk('public')->assertExists($document->file_path);
+        FileStorage::disk()->assertExists($document->file_path);
 
         $deleteResponse = $this->actingAs($user)->delete(route('lease-documents.destroy', $document));
 
         $deleteResponse->assertRedirect(route('leases.show', $lease));
         $this->assertCount(0, $lease->fresh()->documents);
-        Storage::disk('public')->assertMissing($document->file_path);
+        FileStorage::disk()->assertMissing($document->file_path);
     }
 }

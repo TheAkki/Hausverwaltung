@@ -13,6 +13,7 @@ use App\Models\RentalUnit;
 use App\Rules\CostCategoryAllowsLeaseCostable;
 use App\Rules\CostSumWithinInvoiceAmount;
 use App\Services\InvoiceSeries\ForecastRefresher;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -74,6 +75,10 @@ class CostController extends Controller
             'account_id.required' => 'Bei aktivem Kontensystem muss ein Konto ausgewählt werden, um eine Kostenzeile zu buchen.',
             'account_id.prohibited' => 'Einem Mietvertrag zugewiesene Kosten gehen nicht in die Kontensystem-Bilanzierung ein und können keinem Konto zugeordnet werden.',
         ]);
+
+        // Nur auf eine Zuordnung, die der Benutzer sehen darf – sonst ließen sich
+        // Kosten in die Verwaltungsgruppe einer fremden Gruppe buchen.
+        $this->authorize('view', $this->costable($validated['costable_type'], $validated['costable_id']));
 
         $cost = $invoice->costs()->create([
             ...collect($validated)->except('account_id')->all(),
@@ -162,6 +167,15 @@ class CostController extends Controller
     private function refreshVariableForecast(ForecastRefresher $refresher, Invoice $invoice, CostCategory $costCategory, ?int $excludeCostId = null): void
     {
         $refresher->refresh($invoice, $costCategory, $excludeCostId);
+    }
+
+    private function costable(string $type, int|string $id): Model
+    {
+        $class = Relation::getMorphedModel($type);
+
+        abort_if($class === null, 404);
+
+        return $class::findOrFail($id);
     }
 
     private function managementGroupForCostable(?string $type, mixed $id): ?ManagementGroup

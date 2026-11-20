@@ -7,7 +7,6 @@ use App\Models\CostCategory;
 use App\Models\Invoice;
 use App\Models\InvoiceIssuer;
 use App\Models\ManagementGroup;
-use App\Models\ManagementUnit;
 use App\Models\User;
 use Database\Seeders\CostCategorySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;

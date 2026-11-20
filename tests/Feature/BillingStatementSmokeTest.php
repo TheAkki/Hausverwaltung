@@ -14,6 +14,7 @@ use App\Models\ManagementUnit;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Services\InvoiceSeries\InvoiceSeriesService;
+use App\Support\FileStorage;
 use Database\Seeders\BillingTemplateSeeder;
 use Database\Seeders\CostCategorySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -189,7 +190,7 @@ class BillingStatementSmokeTest extends TestCase
      */
     public function test_the_header_image_is_embedded_as_a_data_uri_not_a_storage_link(): void
     {
-        Storage::fake('public');
+        Storage::fake(FileStorage::diskName());
         $this->seed(CostCategorySeeder::class);
 
         // Echte PNG-Bytes schreiben (nicht UploadedFile::fake()->create(), dessen
@@ -197,7 +198,7 @@ class BillingStatementSmokeTest extends TestCase
         // ein minimales 1x1-Pixel-PNG.
         $pngBytes = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=');
         $imagePath = 'billing-template-images/logo.png';
-        Storage::disk('public')->put($imagePath, $pngBytes);
+        FileStorage::disk()->put($imagePath, $pngBytes);
         $template = BillingTemplate::create([
             'name' => 'Mit Kopf-Bild',
             'is_default' => true,
@@ -220,7 +221,7 @@ class BillingStatementSmokeTest extends TestCase
 
         $response->assertOk();
         $response->assertSee('data:image/png;base64,'.base64_encode($pngBytes), false);
-        $response->assertDontSee(Storage::disk('public')->url($imagePath), false);
+        $response->assertDontSee(FileStorage::disk()->url($imagePath), false);
     }
 
     /**

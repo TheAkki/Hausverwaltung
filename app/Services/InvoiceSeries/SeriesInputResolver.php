@@ -6,6 +6,7 @@ use App\Models\BillingInterval;
 use App\Models\CostCategory;
 use App\Models\ManagementGroup;
 use App\Models\User;
+use App\Services\GroupOwnership\GroupOwnership;
 use Carbon\Carbon;
 use Illuminate\Validation\ValidationException;
 
@@ -14,9 +15,9 @@ use Illuminate\Validation\ValidationException;
  * Abrechnungsintervalle) in CostAllocation/CostSegment und prüft dabei die fachlichen
  * Regeln (Konzept.md "### Rechnungen"):
  *
- * - Kategorien müssen für den Benutzer sichtbar sein (systemweit oder einer seiner
- *   Gruppen gehörend, wie überall in der API), Abrechnungsintervalle zur
- *   Verwaltungsgruppe gehören.
+ * - Kategorien müssen für den Benutzer sichtbar sein und systemweit sein oder der
+ *   Benutzergruppe der Verwaltungsgruppe gehören (GroupOwnership),
+ *   Abrechnungsintervalle zur Verwaltungsgruppe gehören.
  * - Ohne Betrag gilt bei genau einem Anteil der ganze Betrag, sonst 0 (der Betrag
  *   kommt später mit den Buchungen).
  * - "Betragsüberprüfung": Ist mindestens ein Betrag angegeben, muss die Summe dem
@@ -105,6 +106,8 @@ final class SeriesInputResolver
         if ($category === null) {
             $this->fail($field, 'Die Kategorie ist nicht vorhanden oder gehört keiner deiner Gruppen.');
         }
+
+        GroupOwnership::assertCategoryFits($category, $this->managementGroup, $field);
 
         return $category;
     }

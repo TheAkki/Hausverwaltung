@@ -11,6 +11,7 @@ use App\Http\Controllers\BillingStatementController;
 use App\Http\Controllers\BillingTemplateController;
 use App\Http\Controllers\CostCategoryController;
 use App\Http\Controllers\CostController;
+use App\Http\Controllers\FileDownloadController;
 use App\Http\Controllers\GroupController;
 use App\Http\Controllers\GroupMembershipController;
 use App\Http\Controllers\HelpController;
@@ -34,6 +35,7 @@ use App\Http\Controllers\TaxOverviewController;
 use App\Http\Controllers\TemplateHelpController;
 use App\Http\Controllers\TenantController;
 use App\Http\Controllers\ThemeController;
+use App\Http\Controllers\UnassignedBookingController;
 use App\Http\Controllers\UserController;
 use App\Http\Middleware\SetLocale;
 use Illuminate\Support\Facades\Route;
@@ -65,12 +67,14 @@ Route::middleware('auth')->group(function () {
     Route::delete('/profile/api-tokens/{tokenId}', [ApiTokenController::class, 'destroy'])
         ->whereNumber('tokenId')->name('profile.api-tokens.destroy');
     Route::get('/help', [HelpController::class, 'show'])->name('help');
+    Route::get('/help/screenshots/{file}', [HelpController::class, 'screenshot'])->name('help.screenshot');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
     Route::get('/backup/export', [BackupController::class, 'export'])->name('backup.export');
     Route::get('/backup/export-full', [BackupController::class, 'exportFull'])->name('backup.export-full');
     Route::post('/backup/import', [BackupController::class, 'import'])->name('backup.import');
     Route::get('/open-payments', [OpenPaymentController::class, 'index'])->name('open-payments.index');
+    Route::get('/unassigned-bookings', [UnassignedBookingController::class, 'index'])->name('unassigned-bookings.index');
 
     Route::resource('users', UserController::class)->except(['destroy']);
 
@@ -89,6 +93,15 @@ Route::middleware('auth')->group(function () {
     Route::resource('leases', LeaseController::class);
     Route::post('/leases/{lease}/documents', [LeaseDocumentController::class, 'store'])->name('leases.documents.store');
     Route::delete('/lease-documents/{leaseDocument}', [LeaseDocumentController::class, 'destroy'])->name('lease-documents.destroy');
+
+    // Hochgeladene Dateien nur mit Berechtigungsprüfung (nicht öffentliche Disk).
+    Route::get('/files/invoices/{invoice}', [FileDownloadController::class, 'invoice'])->name('files.invoice');
+    Route::get('/files/lease-documents/{leaseDocument}', [FileDownloadController::class, 'leaseDocument'])->name('files.lease-document');
+    Route::get('/files/billing-templates/{billingTemplate}/header-image', [FileDownloadController::class, 'billingTemplateImage'])->name('files.billing-template-image');
+    Route::get('/files/settlement-claims/{settlementClaim}', [FileDownloadController::class, 'settlementClaim'])->name('files.settlement-claim');
+    Route::get('/files/account-transfers/{accountTransfer}', [FileDownloadController::class, 'accountTransfer'])->name('files.account-transfer');
+    Route::post('/account-transfers/{accountTransfer}/file', [AccountTransferController::class, 'storeFile'])->name('account-transfers.file.store');
+    Route::delete('/account-transfers/{accountTransfer}/file', [AccountTransferController::class, 'destroyFile'])->name('account-transfers.file.destroy');
 
     Route::get('/lease-intervals/create', [LeaseIntervalController::class, 'create'])->name('lease-intervals.create');
     Route::post('/lease-intervals', [LeaseIntervalController::class, 'store'])->name('lease-intervals.store');
@@ -109,6 +122,7 @@ Route::middleware('auth')->group(function () {
 
     Route::resource('invoice-issuers', InvoiceIssuerController::class)
         ->parameters(['invoice-issuers' => 'invoiceIssuer']);
+    Route::post('/invoice-issuers/{invoiceIssuer}/copy', [InvoiceIssuerController::class, 'copy'])->name('invoice-issuers.copy');
 
     Route::get('/invoice-issuer-accounts/create', [InvoiceIssuerAccountController::class, 'create'])->name('invoice-issuer-accounts.create');
     Route::post('/invoice-issuer-accounts', [InvoiceIssuerAccountController::class, 'store'])->name('invoice-issuer-accounts.store');

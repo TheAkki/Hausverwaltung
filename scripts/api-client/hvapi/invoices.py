@@ -7,6 +7,9 @@ from .session import DataError, Record, describe
 
 PERIODICITY_ONCE = "once"
 
+# Datensätze, die einen Beleg haben können, und ihr API-Pfad (…/{id}/file).
+FILE_ENDPOINTS = {"Rechnung": "/invoices", "Forderung": "/settlement-claims", "Umbuchung": "/account-transfers"}
+
 
 class Invoices(Base):
     def invoice(self, issuer: Record, costable: Record, invoice_date: str, periodicity: str = PERIODICITY_ONCE,
@@ -92,17 +95,21 @@ class Invoices(Base):
         return {**body, "allocations": self._allocations(allocations, group_id),
                 "recurrence_start": fields.get("recurrence_start"), "recurrence_end": fields.get("recurrence_end")}
 
-    def attach_file(self, invoice: Record, path: str) -> bool:
-        """Beleg an die Rechnung hängen. Hat sie schon einen Beleg mit diesem Dateinamen,
-        bleibt er; eine Datei mit anderem Namen ersetzt ihn (wie beim Seeder)."""
-        return self.session.apply("Beleg", f"{invoice.label}: {path}", [invoice], lambda: self._upload(invoice, path))
+    def attach_file(self, record: Record, path: str) -> bool:
+        """Beleg an eine Rechnung, Forderung oder Umbuchung hängen. Hat sie schon einen
+        Beleg mit diesem Dateinamen, bleibt er; eine Datei mit anderem Namen ersetzt ihn
+        (wie beim Seeder)."""
+        if record.kind not in FILE_ENDPOINTS:
+            raise ValueError(f"{record.kind} kann keinen Beleg haben; möglich sind {', '.join(FILE_ENDPOINTS)}.")
+        return self.session.apply("Beleg", f"{record.label}: {path}", [record], lambda: self._upload(record, path))
 
-    def _upload(self, invoice: Record, path: str) -> str:
+    def _upload(self, record: Record, path: str) -> str:
         name, content = self.file(path)
-        if invoice.data.get("file_path") and invoice.data.get("file_original_name") == name:
+        if record.data.get("file_path") and record.data.get("file_original_name") == name:
             return EXISTING
-        outcome = UPDATED if invoice.data.get("file_path") else CREATED
-        invoice.data.update(self.client.upload(f"/invoices/{invoice.id}/file", {}, {"file": (name, content)}))
+        outcome = UPDATED if record.data.get("file_path") else CREATED
+        endpoint = f"{FILE_ENDPOINTS[record.kind]}/{record.id}/file"
+        record.data.update(self.client.upload(endpoint, {}, {"file": (name, content)}))
         return outcome
 
     def bookings(self, invoice: Record, entries, refresh_forecast: bool = True) -> bool:

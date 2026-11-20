@@ -24,6 +24,7 @@ class GenerateDocumentation extends Command
 
         File::ensureDirectoryExists(dirname($path));
         File::put($path, $generator->renderHtml());
+        File::copyDirectory((string) config('docs.screenshot_directory'), dirname($path).'/'.rtrim(DocumentationGenerator::SCREENSHOT_PREFIX, '/'));
 
         $this->info("Bedienungsanleitung generiert: {$path}");
 

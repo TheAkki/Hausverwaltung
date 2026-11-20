@@ -441,7 +441,7 @@ trait SeedsInvoicesAndCosts
             $category = $this->resolveCostCategoryForSeeding($managementGroup, $entry[1]);
 
             if ($category === null) {
-                throw new \RuntimeException("Rechnung {$context}: unbekannte Kategorie \"{$entry[1]}\".");
+                throw new \RuntimeException("Rechnung {$context}: unbekannte Kategorie \"{$entry[1]}\". Eigene Kategorien einer Verwaltungsgruppe, die zu einer Group-* gehört, stehen unter deren \"Kategorien\".");
             }
 
             $allocations[] = new CostAllocation((float) $entry[0], $category, $entry[2] ?? null);

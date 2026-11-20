@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\CopyInvoiceIssuerRequest;
 use App\Models\InvoiceIssuer;
 use App\Rules\ValidIban;
+use App\Services\GroupOwnership\MasterDataCopier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -43,6 +45,18 @@ class InvoiceIssuerController extends Controller
     public function show(InvoiceIssuer $invoiceIssuer): JsonResponse
     {
         return response()->json($invoiceIssuer->load('accounts'));
+    }
+
+    /**
+     * Rechnungssteller samt Kundenaccounts in eine andere eigene Gruppe kopieren;
+     * 201 mit der Kopie, 200 mit dem schon vorhandenen gleichen Eintrag (fehlende
+     * Kundenaccounts ergänzt).
+     */
+    public function copy(CopyInvoiceIssuerRequest $request, InvoiceIssuer $invoiceIssuer, MasterDataCopier $copier): JsonResponse
+    {
+        [$target, $created] = $copier->copyTo($invoiceIssuer, $request->targetGroupId());
+
+        return response()->json($target->load('accounts'), $created ? 201 : 200);
     }
 
     public function update(Request $request, InvoiceIssuer $invoiceIssuer): JsonResponse

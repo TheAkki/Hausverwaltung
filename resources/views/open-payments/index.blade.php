@@ -24,7 +24,7 @@
                             <tr>
                                 <td class="py-2 whitespace-nowrap">{{ $cost->period_date->format('d.m.Y') }}</td>
                                 <td class="py-2">{{ $cost->invoice?->invoiceIssuer?->name }}</td>
-                                <td class="py-2 text-gray-600">{{ class_basename($cost->costable) }} #{{ $cost->costable_id }}</td>
+                                <td class="py-2 text-gray-600">{{ $cost->costableLabel() }}</td>
                                 <td class="py-2">{{ $cost->costCategory->name }}</td>
                                 <td class="py-2 whitespace-nowrap">{{ euro($cost->amount) }} €</td>
                                 <td class="py-2">

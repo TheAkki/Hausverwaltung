@@ -69,7 +69,7 @@
     <x-input-label for="file" :value="__('Datei (optional)')" />
     @if ($invoice?->file_path)
         <p class="text-sm mt-1">
-            <a href="{{ Storage::url($invoice->file_path) }}" download="{{ $invoice->file_original_name }}" class="text-gray-600 hover:underline">{{ __('Aktuelle Datei ansehen') }}</a>
+            <a href="{{ route('files.invoice', $invoice) }}" class="text-gray-600 hover:underline">{{ __('Aktuelle Datei ansehen') }}</a>
             <span class="text-gray-500">{{ __('– beim Hochladen einer neuen Datei wird sie ersetzt') }}</span>
         </p>
     @endif

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Pivots\ManagementGroupCostCategory;
 use App\Observers\CostCategoryObserver;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
@@ -49,6 +50,7 @@ class CostCategory extends Model
     public function managementGroups(): BelongsToMany
     {
         return $this->belongsToMany(ManagementGroup::class, 'management_group_cost_category')
+            ->using(ManagementGroupCostCategory::class)
             ->withPivot('allocation_key')
             ->withTimestamps();
     }
@@ -118,7 +120,26 @@ class CostCategory extends Model
             return $this;
         }
 
-        return static::where('name', $this->mainCategoryName())->first();
+        // Gleichnamige Kategorien anderer Gruppen sind nicht gemeint: die eigene Gruppe
+        // zuerst, sonst eine Systemkategorie.
+        return static::where('name', $this->mainCategoryName())
+            ->inGroupOrSystem($this->user_group_id)
+            ->orderByRaw('user_group_id IS NULL')
+            ->first();
+    }
+
+    /**
+     * Kategorien der Gruppe plus die Systemkategorien (ohne Gruppe) – der Bereich, in
+     * dem ein Kategoriename eindeutig ist und Unterkategorien ihre Hauptkategorie finden.
+     *
+     * @param  Builder<CostCategory>  $query
+     * @return Builder<CostCategory>
+     */
+    public function scopeInGroupOrSystem(Builder $query, ?int $userGroupId): Builder
+    {
+        return $query->where(
+            fn (Builder $q) => $q->whereNull('user_group_id')->when($userGroupId !== null, fn (Builder $q2) => $q2->orWhere('user_group_id', $userGroupId))
+        );
     }
 
     /**

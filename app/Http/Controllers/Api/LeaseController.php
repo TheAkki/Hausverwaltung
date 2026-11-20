@@ -9,6 +9,7 @@ use App\Rules\DateAfterField;
 use App\Rules\NotOverlappingLease;
 use App\Rules\PreContractRequiresFollowingLease;
 use App\Rules\ValidLeaseCoupling;
+use App\Services\GroupOwnership\GroupOwnership;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -94,6 +95,7 @@ class LeaseController extends Controller
             $tenantIds = $targetLease->tenants()->pluck('tenants.id')->all();
         } else {
             $tenantIds = $validated['tenant_ids'];
+            GroupOwnership::assertTenantIdsFit($tenantIds, $rentalUnit->managementUnit->managementGroup);
         }
 
         $lease = Lease::create($attributes);
@@ -148,6 +150,12 @@ class LeaseController extends Controller
                 $lease->id,
             )],
         ]);
+
+        GroupOwnership::assertTenantIdsFit(
+            $validated['tenant_ids'],
+            $lease->rentalUnit->managementUnit->managementGroup,
+            $lease->tenants()->pluck('tenants.id'),
+        );
 
         $lease->update(collect($validated)->except('tenant_ids')
             ->merge(['is_pre_contract' => $request->boolean('is_pre_contract')])->all());

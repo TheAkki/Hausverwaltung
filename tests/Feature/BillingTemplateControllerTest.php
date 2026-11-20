@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\BillingTemplate;
 use App\Models\ManagementGroup;
 use App\Models\User;
+use App\Support\FileStorage;
 use Database\Seeders\BillingTemplateSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -87,7 +88,7 @@ class BillingTemplateControllerTest extends TestCase
 
     public function test_a_template_can_be_created_with_a_header_image(): void
     {
-        Storage::fake('public');
+        Storage::fake(FileStorage::diskName());
         $user = User::factory()->create();
         $group = $user->groups()->first();
 
@@ -100,7 +101,7 @@ class BillingTemplateControllerTest extends TestCase
 
         $template = BillingTemplate::where('name', 'Mit Bild')->first();
         $this->assertNotNull($template->header_image_path);
-        Storage::disk('public')->assertExists($template->header_image_path);
+        FileStorage::disk()->assertExists($template->header_image_path);
         $response->assertRedirect(route('billing-templates.show', $template));
     }
 
@@ -176,10 +177,10 @@ class BillingTemplateControllerTest extends TestCase
 
     public function test_replacing_the_header_image_deletes_the_old_one(): void
     {
-        Storage::fake('public');
+        Storage::fake(FileStorage::diskName());
         $user = User::factory()->create();
         $group = $user->groups()->first();
-        $oldPath = UploadedFile::fake()->create('old.png', 10, 'image/png')->store('billing-template-images', 'public');
+        $oldPath = UploadedFile::fake()->create('old.png', 10, 'image/png')->store('billing-template-images', FileStorage::diskName());
         $template = BillingTemplate::create([
             'user_group_id' => $group->id, 'name' => 'Test', 'content' => 'Inhalt', 'header_image_path' => $oldPath,
         ]);
@@ -191,17 +192,17 @@ class BillingTemplateControllerTest extends TestCase
             'header_image' => UploadedFile::fake()->create('new.png', 10, 'image/png'),
         ]);
 
-        Storage::disk('public')->assertMissing($oldPath);
-        Storage::disk('public')->assertExists($template->fresh()->header_image_path);
+        FileStorage::disk()->assertMissing($oldPath);
+        FileStorage::disk()->assertExists($template->fresh()->header_image_path);
         $this->assertNotSame($oldPath, $template->fresh()->header_image_path);
     }
 
     public function test_the_header_image_can_be_removed_without_replacement(): void
     {
-        Storage::fake('public');
+        Storage::fake(FileStorage::diskName());
         $user = User::factory()->create();
         $group = $user->groups()->first();
-        $oldPath = UploadedFile::fake()->create('old.png', 10, 'image/png')->store('billing-template-images', 'public');
+        $oldPath = UploadedFile::fake()->create('old.png', 10, 'image/png')->store('billing-template-images', FileStorage::diskName());
         $template = BillingTemplate::create([
             'user_group_id' => $group->id, 'name' => 'Test', 'content' => 'Inhalt', 'header_image_path' => $oldPath,
         ]);
@@ -213,7 +214,7 @@ class BillingTemplateControllerTest extends TestCase
             'remove_header_image' => '1',
         ]);
 
-        Storage::disk('public')->assertMissing($oldPath);
+        FileStorage::disk()->assertMissing($oldPath);
         $this->assertNull($template->fresh()->header_image_path);
     }
 
@@ -249,9 +250,9 @@ class BillingTemplateControllerTest extends TestCase
 
     public function test_a_template_can_be_duplicated_including_its_header_image(): void
     {
-        Storage::fake('public');
+        Storage::fake(FileStorage::diskName());
         $user = User::factory()->create();
-        $originalPath = UploadedFile::fake()->create('logo.png', 10, 'image/png')->store('billing-template-images', 'public');
+        $originalPath = UploadedFile::fake()->create('logo.png', 10, 'image/png')->store('billing-template-images', FileStorage::diskName());
         $template = BillingTemplate::create([
             'name' => 'Original', 'content' => 'Inhalt', 'header_image_path' => $originalPath, 'is_default' => true,
         ]);
@@ -266,7 +267,7 @@ class BillingTemplateControllerTest extends TestCase
         // Template und daher der eigenen Gruppe des duplizierenden Nutzers zugewiesen.
         $this->assertSame($user->groups()->first()->id, $copy->user_group_id);
         $this->assertNotSame($originalPath, $copy->header_image_path);
-        Storage::disk('public')->assertExists($copy->header_image_path);
+        FileStorage::disk()->assertExists($copy->header_image_path);
     }
 
     public function test_duplicating_a_template_copies_its_css_content(): void
@@ -285,17 +286,17 @@ class BillingTemplateControllerTest extends TestCase
 
     public function test_deleting_a_template_removes_its_header_image(): void
     {
-        Storage::fake('public');
+        Storage::fake(FileStorage::diskName());
         $user = User::factory()->create();
         $group = $user->groups()->first();
-        $path = UploadedFile::fake()->create('logo.png', 10, 'image/png')->store('billing-template-images', 'public');
+        $path = UploadedFile::fake()->create('logo.png', 10, 'image/png')->store('billing-template-images', FileStorage::diskName());
         $template = BillingTemplate::create(['user_group_id' => $group->id, 'name' => 'Test', 'content' => 'Inhalt', 'header_image_path' => $path]);
 
         $response = $this->actingAs($user)->delete(route('billing-templates.destroy', $template));
 
         $response->assertRedirect(route('billing-templates.index'));
         $this->assertNull(BillingTemplate::find($template->id));
-        Storage::disk('public')->assertMissing($path);
+        FileStorage::disk()->assertMissing($path);
     }
 
     /**
@@ -353,11 +354,11 @@ class BillingTemplateControllerTest extends TestCase
 
     public function test_the_preview_action_reuses_the_templates_own_saved_header_image(): void
     {
-        Storage::fake('public');
+        Storage::fake(FileStorage::diskName());
         $user = User::factory()->create();
         $group = $user->groups()->first();
         $imagePath = 'billing-template-images/logo.png';
-        Storage::disk('public')->put($imagePath, 'PNG-Daten');
+        FileStorage::disk()->put($imagePath, 'PNG-Daten');
         $template = BillingTemplate::create([
             'user_group_id' => $group->id, 'name' => 'Test', 'content' => 'Inhalt', 'header_image_path' => $imagePath,
         ]);

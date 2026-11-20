@@ -12,7 +12,9 @@ use App\Models\ManagementUnit;
 use App\Models\RentalUnit;
 use App\Rules\DateAfterField;
 use App\Rules\SameSignAs;
+use App\Services\GroupOwnership\GroupOwnership;
 use App\Services\InvoiceReceipt;
+use App\Services\InvoiceSeries\CostableManagementGroup;
 use App\Services\InvoiceSeries\InvalidSeriesException;
 use App\Services\InvoiceSeries\InvoiceSeriesService;
 use Illuminate\Database\Eloquent\Builder;
@@ -202,6 +204,7 @@ class InvoiceController extends Controller
 
         $costCategory = CostCategory::findOrFail($validated['cost_category_id']);
         $this->authorize('view', $costCategory);
+        $this->assertFitsManagementGroup($validated['invoice_issuer_id'], $costCategory, $costable);
 
         $invoice = Invoice::create([
             ...$validated,
@@ -273,6 +276,11 @@ class InvoiceController extends Controller
 
         $validated['disable_amount_cap'] = $request->boolean('disable_amount_cap');
 
+        // Ein Kundenaccount gehört zu genau einem Rechnungssteller (ReferenceIntegrity).
+        if ((int) $validated['invoice_issuer_id'] !== $invoice->invoice_issuer_id) {
+            $validated['invoice_issuer_account_id'] = null;
+        }
+
         $invoice->update(collect($validated)->except('file')->all());
         $this->attachUpload($request, $invoice);
 
@@ -303,6 +311,7 @@ class InvoiceController extends Controller
 
         $costCategory = CostCategory::findOrFail($validated['cost_category_id']);
         $this->authorize('view', $costCategory);
+        GroupOwnership::assertCategoryFits($costCategory, CostableManagementGroup::of($invoice->costable));
 
         try {
             $series->complete($invoice, $costCategory, isset($validated['until']) ? Carbon::parse($validated['until'])->toDateString() : null);
@@ -311,6 +320,18 @@ class InvoiceController extends Controller
         }
 
         return redirect()->route('invoices.show', $invoice);
+    }
+
+    /**
+     * Rechnungssteller und Kategorie gehören zur Benutzergruppe der Verwaltungsgruppe
+     * der Zuordnung (GroupOwnership) – geprüft, bevor Rechnung und Kostenzeilen entstehen.
+     */
+    private function assertFitsManagementGroup(int|string $issuerId, CostCategory $costCategory, Model $costable): void
+    {
+        $managementGroup = CostableManagementGroup::of($costable);
+
+        GroupOwnership::assertIssuerFits(InvoiceIssuer::findOrFail($issuerId), $managementGroup);
+        GroupOwnership::assertCategoryFits($costCategory, $managementGroup);
     }
 
     /**
@@ -407,7 +428,10 @@ class InvoiceController extends Controller
             }
         }
 
-        $accountsByIssuer = InvoiceIssuerAccount::orderBy('customer_number')->get()
+        // Nur Kundenkonten sichtbarer Rechnungssteller – die Kundennummern fremder
+        // Gruppen gehen den Benutzer nichts an.
+        $accountsByIssuer = InvoiceIssuerAccount::whereIn('invoice_issuer_id', InvoiceIssuer::visibleTo($user)->select('id'))
+            ->orderBy('customer_number')->get()
             ->groupBy('invoice_issuer_id')
             ->map(fn ($accounts) => $accounts->map(fn ($a) => [
                 'id' => $a->id,

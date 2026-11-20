@@ -6,6 +6,7 @@ use App\Models\Lease;
 use App\Models\ManagementGroup;
 use App\Models\RentalUnit;
 use App\Models\SettlementClaim;
+use App\Services\RecordReceipt;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -38,7 +39,7 @@ class SettlementClaimController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, RecordReceipt $receipt): RedirectResponse
     {
         [$lease, $rentalUnit, $managementGroup] = $this->resolveOwner($request->input('lease_id'), $request->input('rental_unit_id'));
 
@@ -48,13 +49,15 @@ class SettlementClaimController extends Controller
             'amount' => ['required', 'numeric'],
             'booking_date' => ['nullable', 'date'],
             'notes' => ['nullable', 'string'],
+            ...RecordReceipt::rules(),
         ]);
 
         $claim = SettlementClaim::create([
-            ...$validated,
+            ...collect($validated)->except(array_keys(RecordReceipt::rules()))->all(),
             'lease_id' => $lease?->id,
             'rental_unit_id' => $rentalUnit?->id,
         ]);
+        $receipt->applyUpload($claim, $request->file(RecordReceipt::FIELD_FILE), false);
 
         return $this->redirectTo($claim);
     }
@@ -77,7 +80,7 @@ class SettlementClaimController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, SettlementClaim $settlementClaim): RedirectResponse
+    public function update(Request $request, SettlementClaim $settlementClaim, RecordReceipt $receipt): RedirectResponse
     {
         $this->authorizeClaim($settlementClaim, forUpdate: true);
 
@@ -89,9 +92,11 @@ class SettlementClaimController extends Controller
             'amount' => ['required', 'numeric'],
             'booking_date' => ['nullable', 'date'],
             'notes' => ['nullable', 'string'],
+            ...RecordReceipt::rules(),
         ]);
 
-        $settlementClaim->update($validated);
+        $settlementClaim->update(collect($validated)->except(array_keys(RecordReceipt::rules()))->all());
+        $receipt->applyUpload($settlementClaim, $request->file(RecordReceipt::FIELD_FILE), $request->boolean(RecordReceipt::FIELD_REMOVE));
 
         return $this->redirectTo($settlementClaim);
     }
@@ -99,10 +104,11 @@ class SettlementClaimController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(SettlementClaim $settlementClaim): RedirectResponse
+    public function destroy(SettlementClaim $settlementClaim, RecordReceipt $receipt): RedirectResponse
     {
         $this->authorizeClaim($settlementClaim, forUpdate: true);
 
+        $receipt->forget($settlementClaim);
         $settlementClaim->delete();
 
         return $this->redirectTo($settlementClaim);

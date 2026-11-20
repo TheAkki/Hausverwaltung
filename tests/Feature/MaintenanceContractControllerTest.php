@@ -2,8 +2,8 @@
 
 namespace Tests\Feature;
 
-use App\Models\ManagementGroup;
 use App\Models\MaintenanceContract;
+use App\Models\ManagementGroup;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;

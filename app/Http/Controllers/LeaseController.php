@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Invoice;
 use App\Models\Lease;
+use App\Models\ManagementGroup;
 use App\Models\ManagementUnit;
 use App\Models\RentalUnit;
 use App\Models\Tenant;
@@ -11,6 +12,7 @@ use App\Rules\DateAfterField;
 use App\Rules\NotOverlappingLease;
 use App\Rules\PreContractRequiresFollowingLease;
 use App\Rules\ValidLeaseCoupling;
+use App\Services\GroupOwnership\GroupOwnership;
 use App\Services\RentPaymentGenerator;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -58,8 +60,6 @@ class LeaseController extends Controller
      */
     public function create(Request $request): View
     {
-        $tenants = Tenant::visibleTo($request->user())->orderBy('last_name')->get();
-
         if ($request->filled('rental_unit_id')) {
             $rentalUnit = RentalUnit::findOrFail($request->query('rental_unit_id'));
             $this->authorize('view', $rentalUnit);
@@ -67,7 +67,7 @@ class LeaseController extends Controller
             return view('leases.create', [
                 'scope' => 'rental_unit',
                 'rentalUnit' => $rentalUnit,
-                'tenants' => $tenants,
+                'tenants' => $this->selectableTenants($request, $rentalUnit->managementUnit->managementGroup),
                 'referenceableLeases' => $this->referenceableLeasesFor($rentalUnit),
             ]);
         }
@@ -80,7 +80,7 @@ class LeaseController extends Controller
                 'scope' => 'management_unit',
                 'managementUnit' => $managementUnit,
                 'rentalUnits' => $managementUnit->rentalUnits,
-                'tenants' => $tenants,
+                'tenants' => $this->selectableTenants($request, $managementUnit->managementGroup),
                 'referenceableLeasesByRentalUnit' => $this->referenceableLeasesByRentalUnitFor($managementUnit->rentalUnits),
             ]);
         }
@@ -93,9 +93,28 @@ class LeaseController extends Controller
         return view('leases.create', [
             'scope' => 'global',
             'rentalUnits' => $rentalUnits,
-            'tenants' => $tenants,
+            'tenants' => $this->selectableTenants($request),
             'referenceableLeasesByRentalUnit' => $this->referenceableLeasesByRentalUnitFor($rentalUnits),
         ]);
+    }
+
+    /**
+     * Die Mieter, die das Formular anbietet: alle sichtbaren, bei bekannter
+     * Verwaltungsgruppe nur die ihrer Benutzergruppe (siehe GroupOwnership) – plus die
+     * schon zugeordneten, damit ein Mietvertrag aus Altdaten bearbeitbar bleibt.
+     *
+     * @param  Collection<int, Tenant>|null  $attached
+     * @return Collection<int, Tenant>
+     */
+    private function selectableTenants(Request $request, ?ManagementGroup $managementGroup = null, ?Collection $attached = null): Collection
+    {
+        $tenants = Tenant::visibleTo($request->user())->orderBy('last_name')->get();
+
+        if ($managementGroup !== null) {
+            $tenants = $tenants->filter(fn (Tenant $tenant) => GroupOwnership::tenantFits($tenant, $managementGroup));
+        }
+
+        return $tenants->merge($attached ?? collect())->unique('id')->sortBy('last_name')->values();
     }
 
     /**
@@ -218,6 +237,7 @@ class LeaseController extends Controller
             $tenantIds = $targetLease->tenants()->pluck('tenants.id')->all();
         } else {
             $tenantIds = $validated['tenant_ids'];
+            GroupOwnership::assertTenantIdsFit($tenantIds, $rentalUnit->managementUnit->managementGroup);
         }
 
         $lease = Lease::create($attributes);
@@ -259,7 +279,7 @@ class LeaseController extends Controller
      */
     public function edit(Request $request, Lease $lease): View
     {
-        $tenants = Tenant::visibleTo($request->user())->orderBy('last_name')->get();
+        $tenants = $this->selectableTenants($request, $lease->rentalUnit->managementUnit->managementGroup, $lease->tenants);
 
         return view('leases.edit', compact('lease', 'tenants'));
     }
@@ -312,6 +332,12 @@ class LeaseController extends Controller
 
         // An unchecked checkbox is absent from the request, so set the flag explicitly
         // to let the Vorvertrag option be turned off again.
+        GroupOwnership::assertTenantIdsFit(
+            $validated['tenant_ids'],
+            $lease->rentalUnit->managementUnit->managementGroup,
+            $lease->tenants()->pluck('tenants.id'),
+        );
+
         $lease->update(collect($validated)->except('tenant_ids')
             ->merge(['is_pre_contract' => $request->boolean('is_pre_contract')])->all());
         $lease->tenants()->sync($validated['tenant_ids']);

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Pivots\ManagementGroupCostCategory;
 use App\Observers\ManagementGroupObserver;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
@@ -103,6 +104,7 @@ class ManagementGroup extends Model
     public function costCategories(): BelongsToMany
     {
         return $this->belongsToMany(CostCategory::class, 'management_group_cost_category')
+            ->using(ManagementGroupCostCategory::class)
             ->withPivot('allocation_key')
             ->withTimestamps();
     }

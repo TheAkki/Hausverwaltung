@@ -30,6 +30,15 @@ class ExampleImportTest(unittest.TestCase):
         moved = self.api.data["management-groups"][0]
         self.assertEqual(self.api.data["billing-templates"][0]["id"], moved["default_billing_template_id"])
 
+    # KI-generiert
+    def test_the_example_creates_its_master_data_directly_in_the_shared_group(self):
+        run_user(self.api)
+
+        shared = next(g["id"] for g in self.api.data["groups"] if g["name"] == "Erbengemeinschaft Beispiel")
+        for kind in ("tenants", "invoice-issuers", "management-groups", "billing-templates"):
+            self.assertEqual({shared}, {item["user_group_id"] for item in self.api.data[kind]}, kind)
+        self.assertEqual(1, self.api.count("PUT", f"/groups/{shared}/landlord"))
+
     def test_bookings_carry_categories_amounts_and_the_payment_dates(self):
         run_user(self.api)
 
@@ -323,6 +332,25 @@ class SingleCallsTest(unittest.TestCase):
         self.assertTrue(self.hv.attach_file(invoice, "kopfbild.png"))
         self.assertEqual(2, self.api.count("POST", f"/invoices/{invoice.id}/file"))
         self.assertEqual("kopfbild.png", self.api._get("invoices", invoice.id)["file_original_name"])
+
+    # KI-generiert
+    def test_claims_and_transfers_get_receipts_and_other_records_are_rejected(self):
+        giro, reserve = self.hv.account(self.mg, "Giro"), self.hv.account(self.mg, "Rücklage")
+        interval = self.hv.billing_interval(self.mg, "2025-01-01", "2025-12-31")
+        rental = self.hv.rental_unit(self.hv.management_unit(self.mg, "Weg 1", "1", "O"), "Garage", "G1")
+        tenant = self.hv.tenant(self.group, last_name="Meier", street="Weg 1", postal_code="1", city="O")
+        lease = self.hv.lease(rental, "2025-01-01", tenants=[tenant], rent_adjustment_type="fixed")
+
+        transfer = self.hv.transfer(self.mg, giro, reserve, "2026-01-01", 100.0, file="belege/stadtwerke-wasser-2026-01.pdf")
+        claim = self.hv.settlement_claim(lease, interval, "2026-03-01", 12.5, file="kopfbild.png")
+
+        self.assertEqual(1, self.api.count("POST", f"/account-transfers/{transfer.id}/file"))
+        self.assertEqual(1, self.api.count("POST", f"/settlement-claims/{claim.id}/file"))
+        self.assertEqual("kopfbild.png", self.api._get("settlement-claims", claim.id)["file_original_name"])
+        self.assertTrue(self.hv.attach_file(claim, "kopfbild.png"))
+        self.assertEqual(1, self.api.count("POST", f"/settlement-claims/{claim.id}/file"))
+        with self.assertRaises(ValueError):
+            self.hv.attach_file(lease, "kopfbild.png")
 
     def test_moving_to_the_current_group_changes_nothing(self):
         self.assertTrue(self.hv.move_management_group(self.mg, self.group))

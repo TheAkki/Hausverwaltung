@@ -5,6 +5,7 @@ namespace Tests\Feature\Api;
 use App\Models\ManagementGroup;
 use App\Models\User;
 use App\Services\BackupService;
+use App\Support\FileStorage;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -23,7 +24,7 @@ class BackupControllerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        Storage::fake('public');
+        Storage::fake(FileStorage::diskName());
         config(['app.admin_email' => self::ADMIN_EMAIL]);
     }
 

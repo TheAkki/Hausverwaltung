@@ -8,6 +8,7 @@ use App\Models\Invoice;
 use App\Models\InvoiceIssuer;
 use App\Models\Lease;
 use App\Models\ManagementGroup;
+use App\Models\RentalUnit;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -23,7 +24,7 @@ class LeaseCostAssignmentTest extends TestCase
     use RefreshDatabase;
 
     /**
-     * @return array{0: User, 1: ManagementGroup, 2: \App\Models\RentalUnit, 3: Lease, 4: Invoice}
+     * @return array{0: User, 1: ManagementGroup, 2: RentalUnit, 3: Lease, 4: Invoice}
      */
     private function makeLeaseSetup(bool $kontosystemEnabled = false): array
     {

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Pivots\AccountRentPayment;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -39,7 +40,7 @@ class RentPayment extends Model
      */
     public function accounts(): BelongsToMany
     {
-        return $this->belongsToMany(Account::class, 'account_rent_payment')->withPivot('amount')->withTimestamps();
+        return $this->belongsToMany(Account::class, 'account_rent_payment')->using(AccountRentPayment::class)->withPivot('amount')->withTimestamps();
     }
 
     /**

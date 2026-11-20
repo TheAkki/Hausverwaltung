@@ -3,7 +3,13 @@
 namespace Tests\Feature;
 
 use App\Models\Account;
+use App\Models\AccountTransfer;
+use App\Models\CostCategory;
+use App\Models\Invoice;
+use App\Models\InvoiceIssuer;
+use App\Models\Lease;
 use App\Models\ManagementGroup;
+use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -176,25 +182,25 @@ class AccountTest extends TestCase
         $account = $managementGroup->accounts()->create(['name' => 'Girokonto']);
         $otherAccount = $managementGroup->accounts()->create(['name' => 'Rücklage']);
 
-        $issuer = \App\Models\InvoiceIssuer::create([
+        $issuer = InvoiceIssuer::create([
             'name' => 'Stadtwerke', 'street' => 'A', 'postal_code' => '1', 'city' => 'B',
         ]);
-        $invoice = \App\Models\Invoice::create([
+        $invoice = Invoice::create([
             'invoice_issuer_id' => $issuer->id, 'amount' => 100,
             'invoice_date' => '2026-01-01', 'periodicity' => 'once',
         ]);
         $cost = $managementGroup->costs()->create([
-            'invoice_id' => $invoice->id, 'cost_category_id' => \App\Models\CostCategory::create(['name' => 'Sonstiges', 'is_relevant_for_billing' => true])->id,
+            'invoice_id' => $invoice->id, 'cost_category_id' => CostCategory::create(['name' => 'Sonstiges', 'is_relevant_for_billing' => true])->id,
             'billing_interval_id' => $managementGroup->billingIntervals()->first()->id,
             'amount' => 100, 'period_date' => '2026-01-01',
         ]);
         $account->costs()->attach($cost->id, ['amount' => 100]);
         $this->assertTrue($account->costs->contains($cost->id));
 
-        $tenant = \App\Models\Tenant::create(['first_name' => 'Max', 'last_name' => 'Mustermann', 'street' => 'A', 'postal_code' => '1', 'city' => 'B']);
+        $tenant = Tenant::create(['first_name' => 'Max', 'last_name' => 'Mustermann', 'street' => 'A', 'postal_code' => '1', 'city' => 'B']);
         $managementUnit = $managementGroup->managementUnits()->create(['street' => 'A', 'postal_code' => '1', 'city' => 'B']);
         $rentalUnit = $managementUnit->rentalUnits()->create(['type' => 'Wohnung', 'is_relevant_for_billing' => true]);
-        $lease = \App\Models\Lease::create([
+        $lease = Lease::create([
             'rental_unit_id' => $rentalUnit->id, 'start_date' => '2026-01-01',
             'rent_adjustment_type' => 'fixed', 'cold_rent' => 500,
         ]);
@@ -203,7 +209,7 @@ class AccountTest extends TestCase
         $account->rentPayments()->attach($rentPayment->id, ['amount' => 500]);
         $this->assertTrue($account->rentPayments->contains($rentPayment->id));
 
-        $transferOut = \App\Models\AccountTransfer::create([
+        $transferOut = AccountTransfer::create([
             'from_account_id' => $account->id, 'to_account_id' => $otherAccount->id,
             'amount' => 50, 'transfer_date' => '2026-01-15',
         ]);

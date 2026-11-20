@@ -7,6 +7,7 @@ use App\Models\Lease;
 use App\Models\ManagementGroup;
 use App\Models\RentalUnit;
 use App\Models\SettlementClaim;
+use App\Services\RecordReceipt;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -41,10 +42,11 @@ class SettlementClaimController extends Controller
         return response()->json($settlementClaim);
     }
 
-    public function destroy(SettlementClaim $settlementClaim): JsonResponse
+    public function destroy(SettlementClaim $settlementClaim, RecordReceipt $receipt): JsonResponse
     {
         $this->authorizeClaim($settlementClaim);
 
+        $receipt->forget($settlementClaim);
         $settlementClaim->delete();
 
         return response()->json(status: 204);

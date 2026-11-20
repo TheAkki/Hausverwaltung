@@ -8,6 +8,7 @@
 - Funktionen klein halten, eine Aufgabe pro Funktion.
 - Programmiere defensiv. Überprüfe alle Eingaben des Anwenders.
 - Scanne bekannte Sicherheitslücken und warne entsprechend
+- Berücksichtige auch, dass es nicht zu unbefugten Datenzugriffen kommen darf
 
 ## Tests
 - Jede neue Funktion/Änderung braucht Unit-Tests.
